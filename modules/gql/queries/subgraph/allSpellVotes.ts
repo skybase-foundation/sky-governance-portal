@@ -3,6 +3,8 @@ SPDX-FileCopyrightText: © 2023 Dai Foundation <www.daifoundation.org>
 SPDX-License-Identifier: AGPL-3.0-or-later
 */
 
+// Nested weight lookup uses the same blockTimestamp/blockNumber/logIndex ordering
+// as voteAddressSkyWeightsAtTime (see the note there).
 export const allSpellVotes = (chainId: number, skip: number, first: number) => /* GraphQL */ `
 {
   executiveVoteV2S: ExecutiveVoteV2(
@@ -19,7 +21,10 @@ export const allSpellVotes = (chainId: number, skip: number, first: number) => /
     voter {
       id
       address
-      v2VotingPowerChanges(limit: 1, order_by: { blockTimestamp: desc }) {
+      v2VotingPowerChanges(
+        limit: 1
+        order_by: [{ blockTimestamp: desc }, { blockNumber: desc }, { logIndex: desc }]
+      ) {
         newBalance
       }
     }
