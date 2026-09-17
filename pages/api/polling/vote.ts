@@ -22,6 +22,7 @@ import { checkAndClaimGaslessVotingRateLimit } from 'modules/polling/helpers/che
 import { hasSkyRequiredVotingWeight } from 'modules/polling/helpers/hasSkyRequiredVotingWeight';
 import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.constants';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
+import { sanitizeGaslessVoteBody } from 'modules/polling/helpers/sanitizeGaslessVoteBody';
 import { isSupportedNetwork } from 'modules/web3/helpers/networks';
 import { ballotIncludesAlreadyVoted } from 'modules/polling/helpers/ballotIncludesAlreadyVoted';
 import { ApiError } from 'modules/app/api/ApiError';
@@ -52,7 +53,7 @@ export const API_VOTE_ERRORS = {
   RELAYER_ERROR: 'Relayer transaction creation failed.'
 };
 
-async function postErrorInDiscord(error: string, body: any, type = 'error') {
+async function postErrorInDiscord(error: string, body: unknown, type = 'error') {
   // Post on discord
   try {
     if (config.GASLESS_WEBHOOK_URL) {
@@ -60,7 +61,7 @@ async function postErrorInDiscord(error: string, body: any, type = 'error') {
         url: config.GASLESS_WEBHOOK_URL,
         content: JSON.stringify({
           [type]: error,
-          ...body
+          ...sanitizeGaslessVoteBody(body)
         }),
         // TODO turn this to true when ready to deploy
         notify: false
@@ -71,7 +72,7 @@ async function postErrorInDiscord(error: string, body: any, type = 'error') {
   }
 }
 
-type ErrorArgs = { error: string; body: any; code?: number; skipDiscord?: boolean };
+type ErrorArgs = { error: string; body: unknown; code?: number; skipDiscord?: boolean };
 
 async function throwError({ error, body, code = 400, skipDiscord = false }: ErrorArgs) {
   // Post on discord

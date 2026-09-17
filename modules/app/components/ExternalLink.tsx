@@ -21,7 +21,7 @@ export const ExternalLink = ({ href, title, children, styles }: Props): JSX.Elem
       href={href}
       title={title}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       sx={{
         ...styles
       }}
