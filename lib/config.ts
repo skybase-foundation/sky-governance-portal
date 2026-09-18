@@ -11,6 +11,8 @@ type SystemConfig = {
   TRACING_RPC_NODE: string;
   NODE_ENV: 'development' | 'production' | 'test';
   REDIS_URL: string;
+  UPSTASH_REDIS_REST_URL: string;
+  UPSTASH_REDIS_REST_TOKEN: string;
   PRIVY_APP_ID: string;
   PRIVY_APP_SECRET: string;
   PRIVY_WEBHOOK_SIGNING_SECRET: string;
@@ -33,6 +35,8 @@ export const config: SystemConfig = {
   NODE_ENV: process.env.NODE_ENV || 'development',
 
   REDIS_URL: process.env.REDIS_URL || '',
+  UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL || '',
+  UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN || '',
   PRIVY_APP_ID: process.env.PRIVY_APP_ID || '',
   PRIVY_APP_SECRET: process.env.PRIVY_APP_SECRET || '',
   PRIVY_WEBHOOK_SIGNING_SECRET: process.env.PRIVY_WEBHOOK_SIGNING_SECRET || '',

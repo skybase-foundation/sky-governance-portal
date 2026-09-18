@@ -74,7 +74,7 @@ The following configuration values can be added to the `.env` file:
 
 - Set `ETHERSCAN_V2_API_KEY` to a valid [Etherscan V2](https://docs.etherscan.io/etherscan-v2#why-v2) API key for Wagmi to be able to generate the contract ABIs
 
-- Set `USE_CACHE` to true if you want to use cache, if `REDIS_URL` is set it will use REDIS otherwise filesystem cache
+- Set `USE_CACHE` to true if you want to use cache. With `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` set (from the Upstash console's REST API tab) it uses Upstash over HTTP, otherwise the filesystem cache. `REDIS_URL` is no longer used. The cache is always skipped during `next build`.
 
 - Set `GASLESS_DISABLED` to `true` to disable gasless voting in UI (pre-check endpoint will fail)
 

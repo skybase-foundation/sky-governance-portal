@@ -19,12 +19,12 @@ vi.mock('lib/config');
 const cacheFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-${new Date()
   .toISOString()
   .substring(0, 10)}`;
-const cacheSetNXFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-nx-${new Date()
-  .toISOString()
-  .substring(0, 10)}`;
-const cacheSetNXDupFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-nx-dup-${new Date()
-  .toISOString()
-  .substring(0, 10)}`;
+const cacheSetNXFile = `/${os.tmpdir()}/sky-gov-portal-version-${
+  packageJSON.version
+}-mainnet-test-nx-${new Date().toISOString().substring(0, 10)}`;
+const cacheSetNXDupFile = `/${os.tmpdir()}/sky-gov-portal-version-${
+  packageJSON.version
+}-mainnet-test-nx-dup-${new Date().toISOString().substring(0, 10)}`;
 
 describe('Cache', () => {
   beforeAll(() => {
