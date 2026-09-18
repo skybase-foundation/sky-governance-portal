@@ -7,6 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 */
 
 import { vi, Mock } from 'vitest';
+import logger from 'lib/logger';
 
 const client = {
   get: vi.fn(),
@@ -44,15 +45,18 @@ describe('cache over Upstash HTTP', () => {
     cache = await import('../cache');
   });
 
-  it('builds the client from the REST credentials with raw string values', async () => {
+  it('builds a fail-fast client from the REST credentials with raw string values', async () => {
     client.get.mockResolvedValue('cached');
     await cache.cacheGet('poll-list');
     expect(RedisCtor).toHaveBeenCalledTimes(1);
-    expect((RedisCtor as Mock).mock.calls[0][0]).toMatchObject({
+    const options = (RedisCtor as Mock).mock.calls[0][0];
+    expect(options).toMatchObject({
       url: 'https://db-1234.upstash.io',
       token: 'rest-token',
-      automaticDeserialization: false
+      automaticDeserialization: false,
+      retry: false
     });
+    expect(options.signal()).toBeInstanceOf(AbortSignal);
   });
 
   it('reads with GET and HGET', async () => {
@@ -83,14 +87,23 @@ describe('cache over Upstash HTTP', () => {
     expect(client.expire).toHaveBeenCalledWith(expect.stringContaining('-mainnet-poll-list'), 60);
   });
 
-  it('never lets a failed write reject unhandled', async () => {
-    client.set.mockRejectedValue(new Error('Stream is not writeable'));
-    client.hset.mockRejectedValue(new Error('Stream is not writeable'));
-    client.del.mockRejectedValue(new Error('Stream is not writeable'));
-    expect(() => cache.cacheSet('poll-list', 'value')).not.toThrow();
-    expect(() => cache.cacheSet('poll-list', 'value', undefined, 60_000, 'HSET', 'f')).not.toThrow();
-    expect(() => cache.cacheDel('poll-list', 'mainnet' as any)).not.toThrow();
+  it('logs a failed write instead of letting it reject unhandled', async () => {
+    client.set.mockRejectedValueOnce(new Error('request timed out'));
+    client.hset.mockRejectedValueOnce(new Error('request timed out'));
+    client.del.mockRejectedValueOnce(new Error('request timed out'));
+    cache.cacheSet('poll-list', 'value');
+    cache.cacheSet('poll-list', 'value', undefined, 60_000, 'HSET', 'f');
+    cache.cacheDel('poll-list', 'mainnet' as any);
     await flush();
+    const logged = (logger.error as Mock).mock.calls.map(call => String(call[0]));
+    expect(logged).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining('Redis set failed for'),
+        expect.stringContaining('Redis hset failed for'),
+        expect.stringContaining('Redis del failed for')
+      ])
+    );
+    expect(logged.every(line => line.includes('request timed out'))).toBe(true);
   });
 
   it('claims the rate-limit slot atomically with SET NX EX', async () => {
@@ -108,8 +121,9 @@ describe('cache over Upstash HTTP', () => {
     client.del.mockResolvedValue(1);
     cache.cacheDel('proposals', 'mainnet' as any);
     await flush();
-    expect(client.scan).toHaveBeenCalledWith('0', { match: '*proposals*', count: 100 });
-    expect(client.scan).toHaveBeenCalledWith('7', { match: '*proposals*', count: 100 });
+    const pattern = expect.stringMatching(/sky-gov-portal-version-[^/]+-test-mainnet-proposals\*$/);
+    expect(client.scan).toHaveBeenCalledWith('0', { match: pattern, count: 100 });
+    expect(client.scan).toHaveBeenCalledWith('7', { match: pattern, count: 100 });
     expect(client.del).toHaveBeenCalledWith('a', 'b');
     expect(client.del).toHaveBeenCalledWith('c');
   });

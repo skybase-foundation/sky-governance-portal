@@ -33,7 +33,7 @@
     "@theme-ui/color": "^0.16.0",
     "@theme-ui/css": "^0.16.0",
     "@theme-ui/match-media": "^0.16.0",
-    "@upstash/redis": "1.38.4",
+    "@upstash/redis": "^1.38.4",
     "@vercel/analytics": "^0.1.11",
     "babel-plugin-superjson-next": "^0.3.0",
     "color": "^4.2.3",
@@ -74,8 +74,6 @@
     "zustand": "^2.2.3"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3.3.1",
-    "@eslint/js": "^9.39.4",
     "@playwright/test": "^1.59.1",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/jest-dom": "^5.16.2",
@@ -84,6 +82,8 @@
     "@types/lodash": "^4.14.194",
     "@types/node": "^20.12.7",
     "@types/react": "^18.3.1",
+    "@eslint/eslintrc": "^3.3.1",
+    "@eslint/js": "^9.39.4",
     "@typescript-eslint/eslint-plugin": "^8.59.2",
     "@typescript-eslint/parser": "^8.59.2",
     "@vitejs/plugin-react": "^4.3.4",

@@ -37,12 +37,16 @@ const getRedis = (): Redis | null => {
     redisClient = null;
     return redisClient;
   }
+  // A cache call must fail fast: a stalled request is a miss, not a hung
+  // lambda, and a retried SET NX could report a slot as taken that this
+  // very call had just claimed.
   redisClient = new Redis({
     url,
     token,
     automaticDeserialization: false,
     enableTelemetry: false,
-    retry: { retries: 2, backoff: retryCount => retryCount * 200 }
+    retry: false,
+    signal: () => AbortSignal.timeout(3000)
   });
   return redisClient;
 };
@@ -55,16 +59,23 @@ const logRedisFailure = (operation: string, path: string) => (error: unknown) =>
 // Mem cache does not work on local instances of nextjs because nextjs creates clean memory states each time.
 const memoryCache = {};
 
-// Preview and production deployments may share one Redis database, so the
-// environment is part of every key.
-const cacheEnvironment = process.env.VERCEL_ENV || config.NODE_ENV;
+// Deployments may share one Redis database, so every key carries the
+// environment, and each preview branch gets its own namespace.
+const cacheEnvironment = (() => {
+  const environment = process.env.VERCEL_ENV || config.NODE_ENV;
+  const branch = process.env.VERCEL_GIT_COMMIT_REF;
+  const scope = environment === 'preview' && branch ? `preview-${branch}` : environment;
+  return scope.replace(/[^a-zA-Z0-9-]/g, '-');
+})();
+
+export function getCacheKeyPrefix(network: string): string {
+  return `${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-${cacheEnvironment}-${network}-`;
+}
 
 function getFilePath(name: string, network: string, expiryMs?: number): string {
   const date = new Date().toISOString().substring(0, 10);
 
-  return `${os.tmpdir()}/sky-gov-portal-version-${
-    packageJSON.version
-  }-${cacheEnvironment}-${network}-${name}${expiryMs && expiryMs > ONE_DAY_IN_MS ? '' : '-' + date}`;
+  return `${getCacheKeyPrefix(network)}${name}${expiryMs && expiryMs > ONE_DAY_IN_MS ? '' : '-' + date}`;
 }
 
 export const cacheDel = (name: string, network: SupportedNetworks, expiryMs?: number): void => {
@@ -77,7 +88,10 @@ export const cacheDel = (name: string, network: SupportedNetworks, expiryMs?: nu
       const deleteProposalKeys = async () => {
         let cursor = '0';
         do {
-          const [nextCursor, keys] = await redis.scan(cursor, { match: '*proposals*', count: 100 });
+          const [nextCursor, keys] = await redis.scan(cursor, {
+            match: `${getCacheKeyPrefix(network)}proposals*`,
+            count: 100
+          });
 
           if (keys.length > 0) {
             logger.debug('cacheDel pattern: *proposals* ', cursor, keys.length);
@@ -123,7 +137,10 @@ export const getCacheInfo = async (
       // if fetching proposals cache info, there are likely multiple keys cached due to different query params
       // we'll return the ttl for first proposals key we find
       if (name === executiveProposalsCacheKey) {
-        const [, keys] = await redis.scan('0', { match: '*proposals*', count: 1 });
+        const [, keys] = await redis.scan('0', {
+          match: `${getCacheKeyPrefix(currentNetwork)}proposals*`,
+          count: 1
+        });
         if (keys.length > 0) {
           return await redis.ttl(keys[0]);
         }
