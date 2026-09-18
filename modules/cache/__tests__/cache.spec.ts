@@ -8,16 +8,23 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 import fs from 'fs';
 import { config } from '../../../lib/config';
+import os from 'os';
 
-import { cacheSet, cacheSetNX, getCacheKeyPrefix } from '../cache';
+import packageJSON from '../../../package.json';
+import { cacheSet, cacheSetNX } from '../cache';
 import { vi } from 'vitest';
 
 vi.mock('lib/config');
 
-const today = new Date().toISOString().substring(0, 10);
-const cacheFile = `/${getCacheKeyPrefix('mainnet')}test-${today}`;
-const cacheSetNXFile = `/${getCacheKeyPrefix('mainnet')}test-nx-${today}`;
-const cacheSetNXDupFile = `/${getCacheKeyPrefix('mainnet')}test-nx-dup-${today}`;
+const cacheFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-${new Date()
+  .toISOString()
+  .substring(0, 10)}`;
+const cacheSetNXFile = `/${os.tmpdir()}/sky-gov-portal-version-${
+  packageJSON.version
+}-mainnet-test-nx-${new Date().toISOString().substring(0, 10)}`;
+const cacheSetNXDupFile = `/${os.tmpdir()}/sky-gov-portal-version-${
+  packageJSON.version
+}-mainnet-test-nx-dup-${new Date().toISOString().substring(0, 10)}`;
 
 describe('Cache', () => {
   beforeAll(() => {

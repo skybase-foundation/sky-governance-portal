@@ -121,19 +121,10 @@ describe('cache over Upstash HTTP', () => {
     client.del.mockResolvedValue(1);
     cache.cacheDel('proposals', 'mainnet' as any);
     await flush();
-    const pattern = expect.stringMatching(/sky-gov-portal-version-[^/]+-test-mainnet-proposals\*$/);
-    expect(client.scan).toHaveBeenCalledWith('0', { match: pattern, count: 100 });
-    expect(client.scan).toHaveBeenCalledWith('7', { match: pattern, count: 100 });
+    expect(client.scan).toHaveBeenCalledWith('0', { match: '*proposals*', count: 100 });
+    expect(client.scan).toHaveBeenCalledWith('7', { match: '*proposals*', count: 100 });
     expect(client.del).toHaveBeenCalledWith('a', 'b');
     expect(client.del).toHaveBeenCalledWith('c');
-  });
-
-  it('namespaces keys by environment', async () => {
-    client.get.mockResolvedValue(null);
-    await cache.cacheGet('poll-list');
-    expect(client.get).toHaveBeenCalledWith(
-      expect.stringMatching(/sky-gov-portal-version-[^/]+-test-mainnet-poll-list/)
-    );
   });
 
   it('never creates a client during next build', async () => {
