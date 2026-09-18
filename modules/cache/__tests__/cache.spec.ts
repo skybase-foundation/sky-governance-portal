@@ -16,13 +16,13 @@ import { vi } from 'vitest';
 
 vi.mock('lib/config');
 
-const cacheFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-${new Date()
+const cacheFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-test-mainnet-test-${new Date()
   .toISOString()
   .substring(0, 10)}`;
-const cacheSetNXFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-nx-${new Date()
+const cacheSetNXFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-test-mainnet-test-nx-${new Date()
   .toISOString()
   .substring(0, 10)}`;
-const cacheSetNXDupFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-mainnet-test-nx-dup-${new Date()
+const cacheSetNXDupFile = `/${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-test-mainnet-test-nx-dup-${new Date()
   .toISOString()
   .substring(0, 10)}`;
 

@@ -55,12 +55,16 @@ const logRedisFailure = (operation: string, path: string) => (error: unknown) =>
 // Mem cache does not work on local instances of nextjs because nextjs creates clean memory states each time.
 const memoryCache = {};
 
+// Preview and production deployments may share one Redis database, so the
+// environment is part of every key.
+const cacheEnvironment = process.env.VERCEL_ENV || config.NODE_ENV;
+
 function getFilePath(name: string, network: string, expiryMs?: number): string {
   const date = new Date().toISOString().substring(0, 10);
 
-  return `${os.tmpdir()}/sky-gov-portal-version-${packageJSON.version}-${network}-${name}${
-    expiryMs && expiryMs > ONE_DAY_IN_MS ? '' : '-' + date
-  }`;
+  return `${os.tmpdir()}/sky-gov-portal-version-${
+    packageJSON.version
+  }-${cacheEnvironment}-${network}-${name}${expiryMs && expiryMs > ONE_DAY_IN_MS ? '' : '-' + date}`;
 }
 
 export const cacheDel = (name: string, network: SupportedNetworks, expiryMs?: number): void => {

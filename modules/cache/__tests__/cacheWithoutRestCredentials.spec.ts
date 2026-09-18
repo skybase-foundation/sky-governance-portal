@@ -15,6 +15,7 @@ vi.mock('@upstash/redis', () => ({ Redis: RedisCtor }));
 vi.mock('lib/config', () => ({
   config: {
     USE_CACHE: 'true',
+    NODE_ENV: 'test',
     REDIS_URL: 'rediss://default:tcp-token@db-1234.upstash.io:6379',
     UPSTASH_REDIS_REST_URL: '',
     UPSTASH_REDIS_REST_TOKEN: ''

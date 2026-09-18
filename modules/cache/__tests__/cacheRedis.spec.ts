@@ -24,6 +24,7 @@ vi.mock('@upstash/redis', () => ({ Redis: RedisCtor }));
 vi.mock('lib/config', () => ({
   config: {
     USE_CACHE: 'true',
+    NODE_ENV: 'test',
     REDIS_URL: '',
     UPSTASH_REDIS_REST_URL: 'https://db-1234.upstash.io',
     UPSTASH_REDIS_REST_TOKEN: 'rest-token'
@@ -111,6 +112,14 @@ describe('cache over Upstash HTTP', () => {
     expect(client.scan).toHaveBeenCalledWith('7', { match: '*proposals*', count: 100 });
     expect(client.del).toHaveBeenCalledWith('a', 'b');
     expect(client.del).toHaveBeenCalledWith('c');
+  });
+
+  it('namespaces keys by environment', async () => {
+    client.get.mockResolvedValue(null);
+    await cache.cacheGet('poll-list');
+    expect(client.get).toHaveBeenCalledWith(
+      expect.stringMatching(/sky-gov-portal-version-[^/]+-test-mainnet-poll-list/)
+    );
   });
 
   it('never creates a client during next build', async () => {
