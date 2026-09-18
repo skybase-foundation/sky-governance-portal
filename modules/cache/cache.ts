@@ -62,7 +62,7 @@ const memoryCache = {};
 // Deployments may share one Redis database, so every key carries the
 // environment, and each preview branch gets its own namespace.
 const cacheEnvironment = (() => {
-  const environment = process.env.VERCEL_ENV || config.NODE_ENV;
+  const environment = process.env.VERCEL_ENV || config.NODE_ENV || 'development';
   const branch = process.env.VERCEL_GIT_COMMIT_REF;
   const scope = environment === 'preview' && branch ? `preview-${branch}` : environment;
   return scope.replace(/[^a-zA-Z0-9-]/g, '-');
