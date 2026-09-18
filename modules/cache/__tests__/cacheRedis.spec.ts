@@ -24,12 +24,12 @@ vi.mock('@upstash/redis', () => ({ Redis: RedisCtor }));
 vi.mock('lib/config', () => ({
   config: {
     USE_CACHE: 'true',
-    REDIS_URL: 'rediss://default:tcp-token@db-1234.upstash.io:6379',
-    UPSTASH_REDIS_REST_URL: '',
-    UPSTASH_REDIS_REST_TOKEN: ''
+    REDIS_URL: '',
+    UPSTASH_REDIS_REST_URL: 'https://db-1234.upstash.io',
+    UPSTASH_REDIS_REST_TOKEN: 'rest-token'
   }
 }));
-vi.mock('lib/logger', () => ({ default: { debug: vi.fn(), error: vi.fn() } }));
+vi.mock('lib/logger', () => ({ default: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() } }));
 
 const flush = () => new Promise(resolve => setTimeout(resolve, 0));
 
@@ -43,13 +43,13 @@ describe('cache over Upstash HTTP', () => {
     cache = await import('../cache');
   });
 
-  it('builds the client from the TCP URL with raw string values', async () => {
+  it('builds the client from the REST credentials with raw string values', async () => {
     client.get.mockResolvedValue('cached');
     await cache.cacheGet('poll-list');
     expect(RedisCtor).toHaveBeenCalledTimes(1);
     expect((RedisCtor as Mock).mock.calls[0][0]).toMatchObject({
       url: 'https://db-1234.upstash.io',
-      token: 'tcp-token',
+      token: 'rest-token',
       automaticDeserialization: false
     });
   });

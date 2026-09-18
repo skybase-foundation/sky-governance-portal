@@ -16,7 +16,6 @@ import packageJSON from '../../package.json';
 import logger from 'lib/logger';
 import { ONE_DAY_IN_MS, ONE_HOUR_IN_MS } from 'modules/app/constants/time';
 import { executiveProposalsCacheKey } from './constants/cache-keys';
-import { resolveUpstashCredentials } from './upstashCredentials';
 
 let redisClient: Redis | null | undefined;
 
@@ -28,22 +27,23 @@ let redisClient: Redis | null | undefined;
  */
 const getRedis = (): Redis | null => {
   if (redisClient !== undefined) return redisClient;
-  const credentials =
-    process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD
-      ? null
-      : resolveUpstashCredentials({
-          restUrl: config.UPSTASH_REDIS_REST_URL,
-          restToken: config.UPSTASH_REDIS_REST_TOKEN,
-          redisUrl: config.REDIS_URL
-        });
-  redisClient = credentials
-    ? new Redis({
-        ...credentials,
-        automaticDeserialization: false,
-        enableTelemetry: false,
-        retry: { retries: 2, backoff: retryCount => retryCount * 200 }
-      })
-    : null;
+  const { UPSTASH_REDIS_REST_URL: url, UPSTASH_REDIS_REST_TOKEN: token, REDIS_URL } = config;
+  if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD || !url || !token) {
+    if (REDIS_URL && !(url && token)) {
+      logger.warn(
+        'REDIS_URL is set but the cache needs UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN; using the file cache'
+      );
+    }
+    redisClient = null;
+    return redisClient;
+  }
+  redisClient = new Redis({
+    url,
+    token,
+    automaticDeserialization: false,
+    enableTelemetry: false,
+    retry: { retries: 2, backoff: retryCount => retryCount * 200 }
+  });
   return redisClient;
 };
 
