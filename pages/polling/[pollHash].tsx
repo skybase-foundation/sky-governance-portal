@@ -42,6 +42,7 @@ import { ErrorBoundary } from 'modules/app/components/ErrorBoundary';
 import { getPollsPaginated } from 'modules/polling/api/fetchPolls';
 import { InternalLink } from 'modules/app/components/InternalLink';
 import { ExternalLink } from 'modules/app/components/ExternalLink';
+import { parseRawUrl } from 'modules/polling/helpers/parseRawUrl';
 import usePollsStore from 'modules/polling/stores/polls';
 import { DialogOverlay, DialogContent } from 'modules/app/components/Dialog';
 import BoxWithClose from 'modules/app/components/BoxWithClose';
@@ -58,13 +59,6 @@ const editMarkdown = (content: string) => {
   );
 };
 
-// Replaces the raw GitHub domain name, adds the 'blob' path and adds the link to the review section
-const parseRawUrl = (rawUrl: string) => {
-  const [protocol, separator, , org, repo, ...route] = rawUrl.split('/');
-  const url = [protocol, separator, 'github.com', org, repo, 'blob', ...route].join('/');
-  return url + '#review';
-};
-
 const PollView = ({ poll }: { poll: Poll }) => {
   const filteredPollData = usePollsStore(state => state.filteredPolls);
   const [prevSlug, setPrevSlug] = useState(poll.ctx?.prev?.slug);
@@ -72,6 +66,7 @@ const PollView = ({ poll }: { poll: Poll }) => {
 
   const { account } = useAccount();
   const bpi = useBreakpointIndex({ defaultIndex: 2 });
+  const reviewUrl = poll.url ? parseRawUrl(poll.url) : '';
   const [shownOptions, setShownOptions] = useState(6);
   const [overlayOpen, setOverlayOpen] = useState(false);
 
@@ -227,9 +222,9 @@ const PollView = ({ poll }: { poll: Poll }) => {
                         </ExternalLink>
                       </Box>
                     )}
-                    {poll.url && (
+                    {reviewUrl && (
                       <Box>
-                        <ExternalLink title="Review resources on GitHub" href={parseRawUrl(poll.url)}>
+                        <ExternalLink title="Review resources on GitHub" href={reviewUrl}>
                           <Text sx={{ fontSize: 3, fontWeight: 'semiBold' }}>
                             Review resources on GitHub
                             <Icon sx={{ ml: 2 }} name="arrowTopRight" size={2} />
