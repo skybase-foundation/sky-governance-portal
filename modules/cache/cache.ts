@@ -10,53 +10,50 @@ import fs from 'fs';
 import os from 'os';
 import { DEFAULT_NETWORK, SupportedNetworks } from 'modules/web3/constants/networks';
 import { config } from 'lib/config';
-import Redis from 'ioredis';
+import { Redis } from '@upstash/redis';
+import { PHASE_PRODUCTION_BUILD } from 'next/constants';
 import packageJSON from '../../package.json';
 import logger from 'lib/logger';
 import { ONE_DAY_IN_MS, ONE_HOUR_IN_MS } from 'modules/app/constants/time';
 import { executiveProposalsCacheKey } from './constants/cache-keys';
 
-let isConnected = true;
+let redisClient: Redis | null | undefined;
 
-const redis = config.REDIS_URL
-  ? new Redis(config.REDIS_URL, {
-      connectTimeout: 10000,
-      // Serverless fail-fast tuning. Defaults retry each command up to 20
-      // times before surfacing the error, which under a degraded Upstash
-      // connection meant every cache read paid the full retry budget and
-      // logged "Reached the max retries per request limit (which is 20)".
-      // The cache layer treats Redis as best-effort (try/catch + null on
-      // failure), so per-request errors degrade cleanly to "no cache".
-      maxRetriesPerRequest: 1,
-      enableOfflineQueue: false,
-      enableReadyCheck: false,
-      retryStrategy: times => {
-        // Cap reconnect attempts so a dead connection doesn't keep the
-        // lambda alive; the next invocation will open a fresh socket.
-        if (times > 5) return null;
-        return Math.min(times * 200, 1000);
-      }
-    })
-  : null;
-
-if (redis) {
-  redis.on('error', error => {
-    logger.error(`Redis error: ${error.message}`);
+/**
+ * Upstash over HTTP: no socket to go idle and reset, no reconnect loop, and
+ * every command is an independent request that either succeeds or rejects.
+ * Static generation never touches it; a build must not depend on a network
+ * cache, and the file cache is enough to dedupe fetches within one build.
+ */
+const getRedis = (): Redis | null => {
+  if (redisClient !== undefined) return redisClient;
+  const { UPSTASH_REDIS_REST_URL: url, UPSTASH_REDIS_REST_TOKEN: token, REDIS_URL } = config;
+  if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD || !url || !token) {
+    if (REDIS_URL && !(url && token)) {
+      logger.warn(
+        'REDIS_URL is set but the cache needs UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN; using the file cache'
+      );
+    }
+    redisClient = null;
+    return redisClient;
+  }
+  // A cache call must fail fast: a stalled request is a miss, not a hung
+  // lambda, and a retried SET NX could report a slot as taken that this
+  // very call had just claimed.
+  redisClient = new Redis({
+    url,
+    token,
+    automaticDeserialization: false,
+    enableTelemetry: false,
+    retry: false,
+    signal: () => AbortSignal.timeout(3000)
   });
-  // Track connection lifecycle so isConnected reflects current state instead
-  // of latching to false on the first transient error.
-  redis.on('ready', () => {
-    isConnected = true;
-  });
-  redis.on('end', () => {
-    isConnected = false;
-  });
-}
+  return redisClient;
+};
 
-const redisCacheEnabled = () => {
-  const isRedisCache = !!config.REDIS_URL;
-
-  return isRedisCache && redis && isConnected;
+/** Cache writes are fire-and-forget; a failed write must never reject unhandled. */
+const logRedisFailure = (operation: string, path: string) => (error: unknown) => {
+  logger.error(`Redis ${operation} failed for ${path}: ${(error as Error).message}`);
 };
 
 // Mem cache does not work on local instances of nextjs because nextjs creates clean memory states each time.
@@ -73,38 +70,29 @@ function getFilePath(name: string, network: string, expiryMs?: number): string {
 export const cacheDel = (name: string, network: SupportedNetworks, expiryMs?: number): void => {
   const path = getFilePath(name, network, expiryMs);
 
-  if (redisCacheEnabled()) {
+  const redis = getRedis();
+  if (redis) {
     // if clearing proposals, we need to find all of them first
     if (name === 'proposals') {
       const deleteProposalKeys = async () => {
         let cursor = '0';
         do {
-          const pipeline = (redis as Redis).pipeline();
-          const [nextCursor, keys] = await (redis as Redis).scan(
-            cursor,
-            'MATCH',
-            '*proposals*',
-            'COUNT',
-            '100'
-          );
+          const [nextCursor, keys] = await redis.scan(cursor, { match: '*proposals*', count: 100 });
 
           if (keys.length > 0) {
             logger.debug('cacheDel pattern: *proposals* ', cursor, keys.length);
-            pipeline.del(...keys);
+            await redis.del(...keys);
           }
 
-          await pipeline.exec();
           cursor = nextCursor;
         } while (cursor !== '0');
       };
 
-      deleteProposalKeys().catch(error => {
-        logger.error('Error deleting proposal keys:', error);
-      });
+      deleteProposalKeys().catch(logRedisFailure('del pattern', '*proposals*'));
     } else {
       // otherwise just delete the file based on path
       logger.debug('cacheDel redis: ', path);
-      redis?.del(path);
+      redis.del(path).catch(logRedisFailure('del', path));
     }
   } else {
     try {
@@ -130,18 +118,17 @@ export const getCacheInfo = async (
     const currentNetwork = network || DEFAULT_NETWORK.network;
     const path = getFilePath(name, currentNetwork, expiryMs);
 
-    if (redisCacheEnabled()) {
+    const redis = getRedis();
+    if (redis) {
       // if fetching proposals cache info, there are likely multiple keys cached due to different query params
       // we'll return the ttl for first proposals key we find
       if (name === executiveProposalsCacheKey) {
-        const [, keys] = await (redis as Redis).scan('0', 'MATCH', '*proposals*', 'COUNT', '1');
+        const [, keys] = await redis.scan('0', { match: '*proposals*', count: 1 });
         if (keys.length > 0) {
-          const ttl = await redis?.ttl(keys[0]);
-          return ttl;
+          return await redis.ttl(keys[0]);
         }
       } else {
-        const ttl = await redis?.ttl(path);
-        return ttl;
+        return await redis.ttl(path);
       }
     }
   } catch (e) {
@@ -164,9 +151,11 @@ export const cacheGet = async (
     const currentNetwork = network || DEFAULT_NETWORK.network;
     const path = getFilePath(name, currentNetwork, expiryMs);
 
-    if (redisCacheEnabled()) {
+    const redis = getRedis();
+    if (redis) {
       // Get redis data if it exists
-      const cachedData = method === 'GET' ? await redis?.get(path) : await redis?.hget(path, field);
+      const cachedData =
+        method === 'GET' ? await redis.get<string>(path) : await redis.hget<string>(path, field);
       logger.debug(`Redis cache get for ${path}`);
       return cachedData || null;
     } else {
@@ -227,12 +216,13 @@ export const cacheSetNX = async (
   const path = getFilePath(name, currentNetwork, expiryMs);
 
   try {
-    if (redisCacheEnabled()) {
+    const redis = getRedis();
+    if (redis) {
       const expirySeconds = Math.round(expiryMs / 1000);
       logger.debug(`Redis cache setNX for ${path}, with TTL ${expirySeconds} seconds`);
       // SET with NX (only set if not exists) and EX (expiry in seconds)
       // Returns 'OK' if key was set, null if key already existed
-      const result = await redis?.set(path, data, 'EX', expirySeconds, 'NX');
+      const result = await redis.set(path, data, { ex: expirySeconds, nx: true });
       return result === 'OK';
     }
 
@@ -271,28 +261,21 @@ export const cacheSet = (
   const path = getFilePath(name, currentNetwork, expiryMs);
 
   try {
-    if (redisCacheEnabled()) {
+    const redis = getRedis();
+    if (redis) {
       // If redis cache is enabled, store in redis, with a TTL in seconds
       const expirySeconds = Math.round(expiryMs / 1000);
       logger.debug(`Redis cache set for ${path}, with TTL ${expirySeconds} seconds`);
 
       if (method === 'HSET') {
-        if (typeof data === 'string') {
-          redis?.hset(path, field, data, err => {
-            if (!err) {
-              redis.expire(path, expirySeconds);
-            }
-          });
-        } else {
-          redis?.hset(path, data, err => {
-            if (!err) {
-              redis.expire(path, expirySeconds);
-            }
-          });
-        }
+        const fields = typeof data === 'string' ? { [field]: data } : data;
+        redis
+          .hset(path, fields)
+          .then(() => redis.expire(path, expirySeconds))
+          .catch(logRedisFailure('hset', path));
       } else {
         const checkedData = typeof data === 'string' ? data : JSON.stringify(data);
-        redis?.set(path, checkedData, 'EX', expirySeconds);
+        redis.set(path, checkedData, { ex: expirySeconds }).catch(logRedisFailure('set', path));
       }
     } else {
       // File cache
