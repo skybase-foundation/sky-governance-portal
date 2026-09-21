@@ -37,10 +37,12 @@ jobs:
             secret="simulated-failure"
           fi
 
-          ballot=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/generate-test-signature?network=$NETWORK")
+          ballot=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/generate-test-signature?network=$NETWORK") ||
+            { echo "$ballot"; exit 1; }
 
           vote=$(jq -c --arg secret "$secret" '. + {secret: $secret}' <<<"$ballot" |
-            curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' --data @- "$BASE_URL/api/polling/vote")
+            curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' --data @- "$BASE_URL/api/polling/vote") ||
+            { echo "$vote"; exit 1; }
           echo "$vote"
 
           tx_id=$(jq -er '.transactionId' <<<"$vote")
@@ -51,7 +53,8 @@ jobs:
           set -euo pipefail
 
           for _ in $(seq 1 30); do
-            tx=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/polling/relayer-tx?network=$NETWORK&txId=$tx_id")
+            tx=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/polling/relayer-tx?network=$NETWORK&txId=$tx_id") ||
+              { echo "$tx"; exit 1; }
             status=$(jq -r '.status' <<<"$tx")
             echo "$status"
             case "$status" in
