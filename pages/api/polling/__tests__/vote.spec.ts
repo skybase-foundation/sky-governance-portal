@@ -16,6 +16,7 @@ import { parseEther } from 'viem';
 import { checkAndClaimGaslessVotingRateLimit } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
 import { fetchAddressPollVoteHistory } from 'modules/polling/api/fetchAddressPollVoteHistory';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
+import { config } from 'lib/config';
 import { getDelegateContractAddress } from 'modules/delegates/helpers/getDelegateContractAddress';
 import { verifyTypedSignature } from 'modules/web3/helpers/verifyTypedSignature';
 import { Mock, vi } from 'vitest';
@@ -287,5 +288,41 @@ describe('/api/polling/vote API Endpoint', () => {
     expect(res._getJSONData()).toEqual({
       error: { code: 'invalid_request', message: API_VOTE_ERRORS.VOTER_AND_SIGNER_DIFFER }
     });
+  });
+
+  it('never posts the secret or the signature to Discord', async () => {
+    (postRequestToDiscord as Mock).mockClear();
+    const webhookUrl = config.GASLESS_WEBHOOK_URL;
+    config.GASLESS_WEBHOOK_URL = 'https://discord.test/webhook';
+    const { req, res } = mockRequestResponse('POST', {
+      voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
+      pollIds: [1, 2],
+      optionIds: [1, 2],
+      nonce: 3,
+      expiry: Math.floor(Date.now() / 1000) + 3600,
+      signature: '0xsignature-that-must-stay-private',
+      network: 'mainnet',
+      secret: 'wrong-secret-that-must-stay-private'
+    });
+    await voteAPIHandler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res._getJSONData()).toEqual({
+      error: { code: 'invalid_request', message: API_VOTE_ERRORS.WRONG_SECRET }
+    });
+    expect(postRequestToDiscord).toHaveBeenCalledTimes(1);
+    const { content } = (postRequestToDiscord as Mock).mock.calls[0][0];
+    expect(content).not.toContain('must-stay-private');
+    expect(JSON.parse(content)).toEqual({
+      error: API_VOTE_ERRORS.WRONG_SECRET,
+      voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
+      network: 'mainnet',
+      nonce: 3,
+      expiry: expect.any(Number),
+      pollCount: 2,
+      optionCount: 2,
+      usedSecret: true
+    });
+    config.GASLESS_WEBHOOK_URL = webhookUrl;
   });
 });

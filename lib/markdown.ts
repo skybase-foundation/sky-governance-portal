@@ -23,5 +23,5 @@ export async function markdownToHtml(markdown: string, limited?: boolean): Promi
     .use(rehypeSanitize, optionsSanitize)
     .use(rehypeStringify)
     .process(markdown);
-  return result.toString().replace(/<a href/g, '<a target="_blank" href');
+  return result.toString().replace(/<a href/g, '<a target="_blank" rel="noopener noreferrer" href');
 }
