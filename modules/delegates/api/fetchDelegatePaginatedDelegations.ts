@@ -38,7 +38,6 @@ export async function fetchDelegatePaginatedDelegations(
       offset,
       'amount',
       'desc',
-      stakingEngineAddresses,
       stakingEngineAddresses
     )
   });
@@ -52,13 +51,8 @@ export async function fetchDelegatePaginatedDelegations(
     };
   }
 
-  const formattedDelegations = formatCurrentDelegations(delegate.delegations);
-  const totalDelegators = delegate.delegators || 0;
-  const hasStakingEngine = delegate.stakingEngineDelegations?.length > 0;
-  const adjustedTotal = hasStakingEngine ? Math.max(0, totalDelegators - 1) : totalDelegators;
-
   return {
-    delegations: formattedDelegations,
-    total: adjustedTotal
+    delegations: formatCurrentDelegations(delegate.delegations),
+    total: delegate.delegators || 0
   };
 }
