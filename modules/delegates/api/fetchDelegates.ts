@@ -6,6 +6,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
+import logger from 'lib/logger';
 import { fetchChainDelegates } from './fetchChainDelegates';
 import {
   DelegateOrderByEnum,
@@ -96,7 +97,15 @@ export async function fetchAndMergeDelegates(
 ): Promise<[DelegateListItem[] | undefined, AllDelegatesEntryWithName[]]> {
   const [{ data: githubDelegates }, allDelegateAddresses] = await Promise.all([
     fetchGithubDelegates(network),
-    fetchDelegateAddresses(network)
+    fetchDelegateAddresses(network).catch(e => {
+      logger.error(
+        'fetchDelegateAddresses: Error fetching delegate addresses',
+        e.message,
+        'Network',
+        network
+      );
+      return [];
+    })
   ]);
 
   const allDelegatesWithNamesAndLinks = allDelegateAddresses.map(delegate => {
