@@ -1,5 +1,4 @@
-import { gqlRequest } from 'modules/gql/gqlRequest';
-import { allDelegates } from 'modules/gql/queries/subgraph/allDelegates';
+import { fetchAllDelegates } from './fetchAllDelegates';
 import { allDelegateAddressesKey } from 'modules/cache/constants/cache-keys';
 import { cacheGet, cacheSet } from 'modules/cache/cache';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
@@ -15,12 +14,9 @@ export async function fetchDelegateAddresses(network: SupportedNetworks): Promis
   try {
     const chainId = networkNameToChainId(network);
 
-    const data = await gqlRequest({
-      chainId,
-      query: allDelegates(chainId)
-    });
+    const delegateRows = await fetchAllDelegates(chainId);
 
-    const delegates = data.delegates.map(delegate => ({
+    const delegates = delegateRows.map(delegate => ({
       blockTimestamp: new Date(Number(delegate?.blockTimestamp || 0) * 1000),
       delegate: delegate?.ownerAddress,
       voteDelegate: delegate?.address
