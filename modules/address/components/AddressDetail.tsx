@@ -162,7 +162,7 @@ export function AddressDetail({ addressInfo }: { addressInfo: AddressApiResponse
       <Box sx={{ pl: [3, 4], pr: [3, 4], display: 'flex', flexDirection: 'column' }}>
         <AddressSkyDelegatedStats
           totalSkyDelegated={delegatedToData?.totalDelegated}
-          totalSkyDelegatedError={!!delegatedToError}
+          totalSkyDelegatedError={!delegatedToData && !!delegatedToError}
           address={addressInfo.address}
         />
       </Box>
