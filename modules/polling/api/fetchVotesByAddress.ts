@@ -6,6 +6,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
+import chunk from 'lodash/chunk';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { PollTallyVote } from '../types';
 import { gqlRequest } from 'modules/gql/gqlRequest';
@@ -151,17 +152,11 @@ export async function fetchVotesByAddressForPoll(
   );
 
   // One Voter row per address, so chunks no larger than a page cannot hit the indexer's row cap.
-  const uniqueVoterAddresses = [...new Set(allVoterAddresses)];
-  const voterAddressChunks: string[][] = [];
-  for (let i = 0; i < uniqueVoterAddresses.length; i += INDEXER_PAGE_SIZE) {
-    voterAddressChunks.push(uniqueVoterAddresses.slice(i, i + INDEXER_PAGE_SIZE));
-  }
-
   const skyWeightsResponses = await Promise.all(
-    voterAddressChunks.map(chunk =>
+    chunk([...new Set(allVoterAddresses)], INDEXER_PAGE_SIZE).map(voterChunk =>
       gqlRequest<SkyWeightsResponse>({
         chainId: mainnetChainId,
-        query: voteAddressSkyWeightsAtTime(mainnetChainId, chunk, endUnix)
+        query: voteAddressSkyWeightsAtTime(mainnetChainId, voterChunk, endUnix)
       })
     )
   );
