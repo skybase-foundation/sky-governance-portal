@@ -248,9 +248,6 @@ describe('Fetch tally plurality', () => {
           endDate: 200,
           votes: []
         }
-      })
-      .mockResolvedValueOnce({
-        voters: []
       });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);

@@ -10,8 +10,46 @@ import { Mock, vi } from 'vitest';
 import { gqlRequest } from 'modules/gql/gqlRequest';
 import { fetchVotesByAddressForPoll } from '../fetchVotesByAddress';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
+import { INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
 
 vi.mock('modules/gql/gqlRequest');
+
+type IndexerVote = { id: string; voter: { id: string; address: string }; choice: string; blockTime: number };
+
+const makeArbitrumVotes = (count: number): IndexerVote[] =>
+  Array.from({ length: count }, (_, i) => {
+    const address = `0x${i.toString(16).padStart(40, '0')}`;
+    return {
+      id: `42161-123-${address}-${i}`,
+      voter: { id: `42161-${address}`, address },
+      choice: '1',
+      blockTime: 100
+    };
+  });
+
+// Serves keyset pages and applies the indexer's silent row cap to every response.
+const mockCappedIndexer = (arbitrumVotes: IndexerVote[]) =>
+  (gqlRequest as Mock).mockImplementation(async ({ query }: { query: string }) => {
+    const cursor = query.match(/_gt: "([^"]*)"/)?.[1] ?? '';
+    const page = (rows: IndexerVote[]) =>
+      rows
+        .filter(row => row.id > cursor)
+        .sort((a, b) => (a.id < b.id ? -1 : 1))
+        .slice(0, INDEXER_PAGE_SIZE);
+
+    if (query.includes('allMainnetVoters')) return { pollVotes: [] };
+    if (query.includes('allArbitrumVoters')) {
+      return { arbitrumPoll: { startDate: 50, endDate: 200, votes: page(arbitrumVotes) } };
+    }
+    const addresses = [...query.matchAll(/_ilike: "\d+-(0x[0-9a-f]+)"/g)].map(match => match[1]);
+    return {
+      voters: addresses.slice(0, INDEXER_PAGE_SIZE).map(address => ({
+        id: `1-${address}`,
+        address,
+        v2VotingPowerChanges: [{ newBalance: '1000000000000000000' }]
+      }))
+    };
+  });
 
 describe('fetchVotesByAddressForPoll', () => {
   beforeEach(() => {
@@ -211,5 +249,29 @@ describe('fetchVotesByAddressForPoll', () => {
     const votes = await fetchVotesByAddressForPoll(123, {}, SupportedNetworks.MAINNET);
 
     expect(votes.map(vote => vote.voter)).toEqual(['0xreal']);
+  });
+
+  it('counts every ballot and weight when a poll has more votes than the indexer row cap', async () => {
+    mockCappedIndexer(makeArbitrumVotes(1585));
+
+    const votes = await fetchVotesByAddressForPoll(123, {}, SupportedNetworks.MAINNET);
+
+    expect(votes).toHaveLength(1585);
+    expect(votes.every(vote => vote.skySupport === '1')).toBe(true);
+    const weightRequests = (gqlRequest as Mock).mock.calls.filter(([{ query }]) =>
+      query.includes('voteAddressSkyWeightsAtTime')
+    );
+    expect(weightRequests).toHaveLength(2);
+  });
+
+  it('fails instead of returning a truncated vote list when the page ceiling is reached', async () => {
+    (gqlRequest as Mock).mockImplementation(async ({ query }: { query: string }) => {
+      if (query.includes('allMainnetVoters')) return { pollVotes: [] };
+      return { arbitrumPoll: { startDate: 50, endDate: 200, votes: makeArbitrumVotes(INDEXER_PAGE_SIZE) } };
+    });
+
+    await expect(fetchVotesByAddressForPoll(123, {}, SupportedNetworks.MAINNET)).rejects.toThrow(
+      'Indexer result exceeds'
+    );
   });
 });

@@ -17,6 +17,7 @@ import { parseRawOptionId } from '../helpers/parseRawOptionId';
 import { formatEther } from 'viem';
 import { SupportedChainId } from 'modules/web3/constants/chainID';
 import { stripChainIdPrefix } from 'modules/gql/gqlUtils';
+import { fetchAllPages, INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
 
 interface VoterData {
   id: string;
@@ -24,6 +25,7 @@ interface VoterData {
 }
 
 interface VoteData {
+  id: string;
   voter: VoterData;
   choice: string;
   blockTime: number;
@@ -31,6 +33,7 @@ interface VoteData {
 }
 
 interface MainnetVoteData {
+  id: string;
   voter: VoterData;
   choice: string;
   blockTime: number;
@@ -74,25 +77,30 @@ export async function fetchVotesByAddressForPoll(
   const arbitrumChainId =
     network === SupportedNetworks.MAINNET ? SupportedChainId.ARBITRUM : SupportedChainId.ARBITRUMTESTNET;
 
-  const [mainnetVotersResponse, arbitrumVotersResponse] = await Promise.all([
-    gqlRequest<MainnetVotersResponse>({
-      chainId: mainnetChainId,
-      query: allMainnetVoters(mainnetChainId, pollId.toString())
+  let arbitrumPoll = null as ArbitrumPollData | null;
+
+  const [mainnetVotes, arbitrumVotes] = await Promise.all([
+    fetchAllPages(async cursor => {
+      const response = await gqlRequest<MainnetVotersResponse>({
+        chainId: mainnetChainId,
+        query: allMainnetVoters(mainnetChainId, pollId.toString(), cursor)
+      });
+      return response.pollVotes || [];
     }),
-    gqlRequest<ArbitrumVotersResponse>({
-      chainId: arbitrumChainId,
-      query: allArbitrumVoters(arbitrumChainId, pollId.toString())
+    fetchAllPages(async cursor => {
+      const response = await gqlRequest<ArbitrumVotersResponse>({
+        chainId: arbitrumChainId,
+        query: allArbitrumVoters(arbitrumChainId, pollId.toString(), cursor)
+      });
+      arbitrumPoll = response.arbitrumPoll;
+      return response.arbitrumPoll?.votes || [];
     })
   ]);
 
-  const arbitrumPoll = arbitrumVotersResponse.arbitrumPoll;
   // Envio returns numeric fields as strings; coerce so the window comparisons stay numeric.
   const startUnix =
     arbitrumPoll?.startDate != null ? Number(arbitrumPoll.startDate) : Number.NEGATIVE_INFINITY;
   const endUnix = arbitrumPoll?.endDate != null ? Number(arbitrumPoll.endDate) : Number.POSITIVE_INFINITY;
-
-  const mainnetVotes = mainnetVotersResponse.pollVotes || [];
-  const arbitrumVotes = arbitrumPoll?.votes || [];
 
   const isVoteWithinPollTimeframe = vote => {
     const blockTime = Number(vote.blockTime);
@@ -142,12 +150,23 @@ export async function fetchVotesByAddressForPoll(
     }, {} as Record<string, (typeof allVotes)[0]>)
   );
 
-  const skyWeightsResponse = await gqlRequest<SkyWeightsResponse>({
-    chainId: mainnetChainId,
-    query: voteAddressSkyWeightsAtTime(mainnetChainId, allVoterAddresses, endUnix)
-  });
+  // One Voter row per address, so chunks no larger than a page cannot hit the indexer's row cap.
+  const uniqueVoterAddresses = [...new Set(allVoterAddresses)];
+  const voterAddressChunks: string[][] = [];
+  for (let i = 0; i < uniqueVoterAddresses.length; i += INDEXER_PAGE_SIZE) {
+    voterAddressChunks.push(uniqueVoterAddresses.slice(i, i + INDEXER_PAGE_SIZE));
+  }
 
-  const votersWithWeights = skyWeightsResponse.voters || [];
+  const skyWeightsResponses = await Promise.all(
+    voterAddressChunks.map(chunk =>
+      gqlRequest<SkyWeightsResponse>({
+        chainId: mainnetChainId,
+        query: voteAddressSkyWeightsAtTime(mainnetChainId, chunk, endUnix)
+      })
+    )
+  );
+
+  const votersWithWeights = skyWeightsResponses.flatMap(response => response.voters || []);
 
   const votesWithWeights = dedupedVotes.map((vote: (typeof allVotes)[0]) => {
     const voterId = vote.voter.address;
