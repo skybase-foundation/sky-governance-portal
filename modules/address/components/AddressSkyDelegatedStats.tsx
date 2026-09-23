@@ -14,9 +14,11 @@ import { formatValue } from 'lib/string';
 
 export function AddressSkyDelegatedStats({
   totalSkyDelegated,
+  totalSkyDelegatedError,
   address
 }: {
   totalSkyDelegated?: number;
+  totalSkyDelegatedError?: boolean;
   address: string;
 }): React.ReactElement {
   const { data: votingWeight } = useSkyVotingWeight({ address, excludeDelegateOwnerBalance: true });
@@ -40,7 +42,13 @@ export function AddressSkyDelegatedStats({
         styles={{
           textAlign: 'right'
         }}
-        value={totalSkyDelegated ? formatValue(parseEther(totalSkyDelegated.toString())) : '0'}
+        value={
+          totalSkyDelegatedError
+            ? '—'
+            : totalSkyDelegated === undefined
+            ? undefined
+            : formatValue(parseEther(totalSkyDelegated.toString()))
+        }
         label={'Total SKY Delegated'}
       />
     </Flex>

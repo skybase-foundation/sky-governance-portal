@@ -36,7 +36,7 @@ export function AddressDetail({ addressInfo }: { addressInfo: AddressApiResponse
     }
   );
 
-  const { data: delegatedToData } = useDelegatedTo(addressInfo.address, network);
+  const { data: delegatedToData, error: delegatedToError } = useDelegatedTo(addressInfo.address, network);
 
   const tabTitles = ['Account Details'];
 
@@ -79,9 +79,14 @@ export function AddressDetail({ addressInfo }: { addressInfo: AddressApiResponse
         >
           SKY Delegated by Address
         </Text>
-        {!delegatedToData && (
+        {!delegatedToData && !delegatedToError && (
           <Box mb={3}>
             <SkeletonThemed width={'300px'} height={'30px'} />
+          </Box>
+        )}
+        {!delegatedToData && delegatedToError && (
+          <Box mb={3}>
+            <Text>Error loading delegations</Text>
           </Box>
         )}
         {delegatedToData && delegatedToData.delegatedTo.length > 0 && (
@@ -157,6 +162,7 @@ export function AddressDetail({ addressInfo }: { addressInfo: AddressApiResponse
       <Box sx={{ pl: [3, 4], pr: [3, 4], display: 'flex', flexDirection: 'column' }}>
         <AddressSkyDelegatedStats
           totalSkyDelegated={delegatedToData?.totalDelegated}
+          totalSkyDelegatedError={!!delegatedToError}
           address={addressInfo.address}
         />
       </Box>
