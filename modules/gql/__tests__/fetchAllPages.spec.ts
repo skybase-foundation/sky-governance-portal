@@ -13,17 +13,34 @@ const makeRows = (count: number, offset = 0) =>
   Array.from({ length: count }, (_, i) => ({ id: String(offset + i).padStart(8, '0') }));
 
 describe('fetchAllPages', () => {
-  it('returns a single short page without requesting another', async () => {
-    const fetchPage = vi.fn().mockResolvedValueOnce(makeRows(3));
+  it('returns an empty result after one request', async () => {
+    const fetchPage = vi.fn().mockResolvedValueOnce([]);
 
-    const rows = await fetchAllPages(fetchPage);
-
-    expect(rows).toHaveLength(3);
+    expect(await fetchAllPages(fetchPage)).toEqual([]);
     expect(fetchPage).toHaveBeenCalledTimes(1);
     expect(fetchPage).toHaveBeenCalledWith('');
   });
 
-  it('follows the cursor past full pages until a page comes back short', async () => {
+  it('keeps paging after a short page in case the indexer cap is below the page size', async () => {
+    const firstPage = makeRows(500);
+    const secondPage = makeRows(500, 500);
+    const fetchPage = vi
+      .fn()
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage)
+      .mockResolvedValueOnce([]);
+
+    const rows = await fetchAllPages(fetchPage);
+
+    expect(rows).toHaveLength(1000);
+    expect(fetchPage.mock.calls.map(([cursor]) => cursor)).toEqual([
+      '',
+      firstPage[499].id,
+      secondPage[499].id
+    ]);
+  });
+
+  it('follows the cursor until a page comes back empty', async () => {
     const firstPage = makeRows(INDEXER_PAGE_SIZE);
     const secondPage = makeRows(INDEXER_PAGE_SIZE, INDEXER_PAGE_SIZE);
     const lastPage = makeRows(583, 2 * INDEXER_PAGE_SIZE);
@@ -31,7 +48,8 @@ describe('fetchAllPages', () => {
       .fn()
       .mockResolvedValueOnce(firstPage)
       .mockResolvedValueOnce(secondPage)
-      .mockResolvedValueOnce(lastPage);
+      .mockResolvedValueOnce(lastPage)
+      .mockResolvedValueOnce([]);
 
     const rows = await fetchAllPages(fetchPage);
 
@@ -40,17 +58,9 @@ describe('fetchAllPages', () => {
     expect(fetchPage.mock.calls.map(([cursor]) => cursor)).toEqual([
       '',
       firstPage[INDEXER_PAGE_SIZE - 1].id,
-      secondPage[INDEXER_PAGE_SIZE - 1].id
+      secondPage[INDEXER_PAGE_SIZE - 1].id,
+      lastPage[582].id
     ]);
-  });
-
-  it('requests one more page when the result is an exact multiple of the page size', async () => {
-    const fetchPage = vi.fn().mockResolvedValueOnce(makeRows(INDEXER_PAGE_SIZE)).mockResolvedValueOnce([]);
-
-    const rows = await fetchAllPages(fetchPage);
-
-    expect(rows).toHaveLength(INDEXER_PAGE_SIZE);
-    expect(fetchPage).toHaveBeenCalledTimes(2);
   });
 
   it('throws instead of returning a partial result when every page is full', async () => {

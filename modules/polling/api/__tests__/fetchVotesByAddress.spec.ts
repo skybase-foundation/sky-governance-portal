@@ -8,6 +8,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { Mock, vi } from 'vitest';
 import { gqlRequest } from 'modules/gql/gqlRequest';
+import { mockTallyIndexer } from './__helpers__/mockTallyIndexer';
 import { fetchVotesByAddressForPoll } from '../fetchVotesByAddress';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
@@ -57,8 +58,8 @@ describe('fetchVotesByAddressForPoll', () => {
   });
 
   it('dedupes gasless votes by the mapped delegate address and keeps the delegate weight', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      mainnet: {
         pollVotes: [
           {
             voter: { id: '1-0xdelegate', address: '0xdelegate' },
@@ -67,8 +68,8 @@ describe('fetchVotesByAddressForPoll', () => {
             txnHash: '0xmain'
           }
         ]
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -81,8 +82,8 @@ describe('fetchVotesByAddressForPoll', () => {
             }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           {
             id: '0xdelegate',
@@ -90,7 +91,8 @@ describe('fetchVotesByAddressForPoll', () => {
             v2VotingPowerChanges: [{ newBalance: '5000000000000000000' }]
           }
         ]
-      });
+      }
+    });
 
     const votes = await fetchVotesByAddressForPoll(
       123,
@@ -112,8 +114,8 @@ describe('fetchVotesByAddressForPoll', () => {
     // Mirrors poll 1615: an in-window Arbitrum vote for option 2, then a mainnet vote for option 1
     // cast after endDate. Dedupe keeps the highest blockTime, so without timeframe filtering the
     // post-close ballot wins and inherits the voter's end-of-poll weight.
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      mainnet: {
         pollVotes: [
           {
             voter: { id: '1-0xvoter', address: '0xvoter' },
@@ -122,8 +124,8 @@ describe('fetchVotesByAddressForPoll', () => {
             txnHash: '0xpostclose'
           }
         ]
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -136,8 +138,8 @@ describe('fetchVotesByAddressForPoll', () => {
             }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           {
             id: '0xvoter',
@@ -145,7 +147,8 @@ describe('fetchVotesByAddressForPoll', () => {
             v2VotingPowerChanges: [{ newBalance: '5000000000000000000' }]
           }
         ]
-      });
+      }
+    });
 
     const votes = await fetchVotesByAddressForPoll(123, {}, SupportedNetworks.MAINNET);
 
@@ -163,8 +166,8 @@ describe('fetchVotesByAddressForPoll', () => {
   it('excludes voters who only voted outside the poll window', async () => {
     // Mirrors polls 1504/1505/1507: addresses that never voted in-window are absent from the weight
     // lookup, so they land in the tally with 0 SKY and inflate numVoters.
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      mainnet: {
         pollVotes: [
           {
             voter: { id: '1-0xlate', address: '0xlate' },
@@ -179,8 +182,8 @@ describe('fetchVotesByAddressForPoll', () => {
             txnHash: '0xearly'
           }
         ]
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -193,8 +196,8 @@ describe('fetchVotesByAddressForPoll', () => {
             }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           {
             id: '0xreal',
@@ -202,7 +205,8 @@ describe('fetchVotesByAddressForPoll', () => {
             v2VotingPowerChanges: [{ newBalance: '5000000000000000000' }]
           }
         ]
-      });
+      }
+    });
 
     const votes = await fetchVotesByAddressForPoll(123, {}, SupportedNetworks.MAINNET);
 
@@ -211,8 +215,8 @@ describe('fetchVotesByAddressForPoll', () => {
 
   it('treats string blockTime and poll dates numerically', async () => {
     // Envio returns numeric columns as strings; a lexicographic comparison would let this through.
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      mainnet: {
         pollVotes: [
           {
             voter: { id: '1-0xlate', address: '0xlate' },
@@ -221,8 +225,8 @@ describe('fetchVotesByAddressForPoll', () => {
             txnHash: '0xlate'
           }
         ]
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: '50',
           endDate: '200',
@@ -235,8 +239,8 @@ describe('fetchVotesByAddressForPoll', () => {
             }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           {
             id: '0xreal',
@@ -244,7 +248,8 @@ describe('fetchVotesByAddressForPoll', () => {
             v2VotingPowerChanges: [{ newBalance: '5000000000000000000' }]
           }
         ]
-      });
+      }
+    });
 
     const votes = await fetchVotesByAddressForPoll(123, {}, SupportedNetworks.MAINNET);
 

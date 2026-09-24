@@ -93,7 +93,7 @@ export async function fetchVotesByAddressForPoll(
         chainId: arbitrumChainId,
         query: allArbitrumVoters(arbitrumChainId, pollId.toString(), cursor)
       });
-      arbitrumPoll = response.arbitrumPoll;
+      if (!arbitrumPoll) arbitrumPoll = response.arbitrumPoll;
       return response.arbitrumPoll?.votes || [];
     })
   ]);

@@ -22,6 +22,7 @@ const endDateOf = (pollId: number) => 2_000_000_000 + pollId * 1000;
 // Balance at time T is T wei-SKY, so each poll's weight identifies which timestamp was looked up.
 const mockIndexer = () =>
   (gqlRequest as Mock).mockImplementation(async ({ query }: { query: string }) => {
+    if (/id: \{ _gt: "[^"]+" \}/.test(query)) return {};
     if (query.includes('arbitrumPollVotes')) {
       return {
         arbitrumPollVotes: Array.from({ length: POLL_COUNT }, (_, pollId) => ({

@@ -103,7 +103,7 @@ async function fetchAllCurrentVotesWithSubgraph(
         chainId: mainnetChainId,
         query: allMainnetVotes(mainnetChainId, address.toLowerCase(), startUnix, cursor)
       });
-      return response.pollVotes;
+      return response.pollVotes || [];
     }),
     fetchAllPages(async cursor => {
       const response = await gqlRequest<ArbitrumVotesResponse>({
@@ -115,7 +115,7 @@ async function fetchAllCurrentVotesWithSubgraph(
           cursor
         )
       });
-      return response.arbitrumPollVotes;
+      return response.arbitrumPollVotes || [];
     })
   ]);
   const mainnetVotesWithChainId = mainnetVotes.map(vote => ({
