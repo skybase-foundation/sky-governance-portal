@@ -7,7 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 */
 
 import { describe, expect, it, vi } from 'vitest';
-import { fetchAllPages, INDEXER_PAGE_SIZE, MAX_INDEXER_PAGES } from '../fetchAllPages';
+import { fetchAllPages, INDEXER_PAGE_SIZE, mapWithConcurrency, MAX_INDEXER_PAGES } from '../fetchAllPages';
 
 const makeRows = (count: number, offset = 0) =>
   Array.from({ length: count }, (_, i) => ({ id: String(offset + i).padStart(8, '0') }));
@@ -71,5 +71,37 @@ describe('fetchAllPages', () => {
       `Indexer result exceeds ${MAX_INDEXER_PAGES * INDEXER_PAGE_SIZE} rows`
     );
     expect(fetchPage).toHaveBeenCalledTimes(MAX_INDEXER_PAGES);
+  });
+});
+
+describe('mapWithConcurrency', () => {
+  it('keeps at most `limit` calls in flight and preserves order', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const results = await mapWithConcurrency([5, 1, 4, 2, 3, 0, 6], 3, async n => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(resolve => setTimeout(resolve, n));
+      inFlight--;
+      return n * 10;
+    });
+
+    expect(results).toEqual([50, 10, 40, 20, 30, 0, 60]);
+    expect(maxInFlight).toBe(3);
+  });
+
+  it('rejects when a call fails', async () => {
+    await expect(
+      mapWithConcurrency([1, 2, 3], 2, async n => {
+        if (n === 2) throw new Error('indexer unavailable');
+        return n;
+      })
+    ).rejects.toThrow('indexer unavailable');
+  });
+
+  it('returns an empty list without calling fn', async () => {
+    const fn = vi.fn();
+    expect(await mapWithConcurrency([], 3, fn)).toEqual([]);
+    expect(fn).not.toHaveBeenCalled();
   });
 });

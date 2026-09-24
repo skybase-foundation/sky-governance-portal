@@ -12,6 +12,7 @@ import { ApiError } from 'modules/app/api/ApiError';
 // and reports nothing when it does.
 export const INDEXER_PAGE_SIZE = 1000;
 export const MAX_INDEXER_PAGES = 100;
+export const MAX_CONCURRENT_INDEXER_REQUESTS = 3;
 
 // Walks a keyset-paginated query (order_by id asc, id _gt cursor) until a page comes back empty.
 // Stopping on a short page would silently truncate again if the indexer's cap dropped below the page size.
@@ -34,4 +35,23 @@ export async function fetchAllPages<T extends { id: string }>(
     500,
     'Error fetching gov polling data'
   );
+}
+
+// Like Promise.all over items.map(fn), but with at most `limit` calls in flight, so batched lookups
+// don't all hit the indexer at once. Results keep the order of `items`.
+export async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  fn: (item: T) => Promise<R>
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const index = next++;
+      results[index] = await fn(items[index]);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }

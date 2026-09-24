@@ -18,7 +18,12 @@ import { parseRawOptionId } from '../helpers/parseRawOptionId';
 import { formatEther } from 'viem';
 import { SupportedChainId } from 'modules/web3/constants/chainID';
 import { stripChainIdPrefix } from 'modules/gql/gqlUtils';
-import { fetchAllPages, INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
+import {
+  fetchAllPages,
+  INDEXER_PAGE_SIZE,
+  mapWithConcurrency,
+  MAX_CONCURRENT_INDEXER_REQUESTS
+} from 'modules/gql/fetchAllPages';
 
 interface VoterData {
   id: string;
@@ -152,13 +157,14 @@ export async function fetchVotesByAddressForPoll(
   );
 
   // One Voter row per address, so chunks no larger than a page cannot hit the indexer's row cap.
-  const skyWeightsResponses = await Promise.all(
-    chunk([...new Set(allVoterAddresses)], INDEXER_PAGE_SIZE).map(voterChunk =>
+  const skyWeightsResponses = await mapWithConcurrency(
+    chunk([...new Set(allVoterAddresses)], INDEXER_PAGE_SIZE),
+    MAX_CONCURRENT_INDEXER_REQUESTS,
+    voterChunk =>
       gqlRequest<SkyWeightsResponse>({
         chainId: mainnetChainId,
         query: voteAddressSkyWeightsAtTime(mainnetChainId, voterChunk, endUnix)
       })
-    )
   );
 
   const votersWithWeights = skyWeightsResponses.flatMap(response => response.voters || []);

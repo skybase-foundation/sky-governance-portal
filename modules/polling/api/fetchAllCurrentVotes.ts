@@ -8,7 +8,12 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 import chunk from 'lodash/chunk';
 import { gqlRequest } from 'modules/gql/gqlRequest';
-import { fetchAllPages, INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
+import {
+  fetchAllPages,
+  INDEXER_PAGE_SIZE,
+  mapWithConcurrency,
+  MAX_CONCURRENT_INDEXER_REQUESTS
+} from 'modules/gql/fetchAllPages';
 import { allMainnetVotes } from 'modules/gql/queries/subgraph/allMainnetVotes';
 import { allArbitrumVotes } from 'modules/gql/queries/subgraph/allArbitrumVotes';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
@@ -67,14 +72,16 @@ async function fetchSkyWeightsAtTimes(
   timestamps: number[]
 ): Promise<Map<number, string>> {
   const weights = new Map<number, string>();
-  await Promise.all(
-    chunk([...new Set(timestamps)], WEIGHT_LOOKUPS_PER_REQUEST).map(async timestampChunk => {
+  await mapWithConcurrency(
+    chunk([...new Set(timestamps)], WEIGHT_LOOKUPS_PER_REQUEST),
+    MAX_CONCURRENT_INDEXER_REQUESTS,
+    async timestampChunk => {
       const response = await gqlRequest<VotingWeightsAtTimesResponse>({
         chainId,
         query: votingWeightsAtTimes(chainId, address, timestampChunk)
       });
       timestampChunk.forEach((unix, i) => weights.set(unix, response[`at${i}`]?.[0]?.newBalance || '0'));
-    })
+    }
   );
   return weights;
 }
@@ -141,13 +148,14 @@ async function fetchAllCurrentVotesWithSubgraph(
   //get the poll times for all polls voted in
   //This is a separate request because we needed to know the arbitrum poll ids first to pass in to the query
   const allPollIds = dedupedVotes.map(p => p.poll.pollId);
-  const pollTimesResponses = await Promise.all(
-    chunk(allPollIds, INDEXER_PAGE_SIZE).map(pollIdChunk =>
+  const pollTimesResponses = await mapWithConcurrency(
+    chunk(allPollIds, INDEXER_PAGE_SIZE),
+    MAX_CONCURRENT_INDEXER_REQUESTS,
+    pollIdChunk =>
       gqlRequest<PollTimesResponse>({
         chainId: arbitrumChainId,
         query: pollTimes(arbitrumChainId, pollIdChunk)
       })
-    )
   );
   const pollTimesRes: PollTimesResponse = {
     arbitrumPolls: pollTimesResponses.flatMap(response => response.arbitrumPolls)
