@@ -45,6 +45,9 @@ export const useSkyDelegatedByUser = (
   }
   const network = chainIdToNetworkName(chainId);
 
+  // Only sees direct delegation: stake(user) on the VoteDelegate. Staking Engine delegations are locked
+  // by the engine's urns, not the user's address, so they read as 0 here. The portal can't undelegate those
+  // anyway (that's done in the Sky app), so the fallback covers what the Undelegate modal can withdraw.
   const fetchFromChain = async (userAddress: string | undefined, voteDelegateAddress: string) => {
     if (!userAddress) return undefined;
 
