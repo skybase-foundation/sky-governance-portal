@@ -71,6 +71,22 @@ SPDX-License-Identifier: AGPL-3.0-or-later
  *                     type: boolean
  *                     nullable: true
  *                     description: Indicates if the event was related to a lockstake operation.
+ *       500:
+ *         description: The indexer could not be queried. Returned instead of an empty list, so a failure is not mistaken for no history.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: object
+ *                   properties:
+ *                     code:
+ *                       type: string
+ *                       example: unexpected_error
+ *                     message:
+ *                       type: string
+ *                       example: Error fetching gov polling data
  */
 import { NextApiRequest, NextApiResponse } from 'next';
 import validateQueryParam from 'modules/app/api/validateQueryParam';
