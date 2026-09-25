@@ -35,6 +35,12 @@ export async function getSlateAddresses(
   const [length, ...yays] = await publicClient.multicall({ contracts });
 
   if (length.status === 'failure') throw length.error;
+  // Only reachable on a Chief with a higher maxYays: fail rather than return the first CHIEF_MAX_YAYS spells
+  if ((length.result as bigint) > BigInt(CHIEF_MAX_YAYS)) {
+    throw new Error(
+      `Slate ${slateHash} has ${length.result} spells, more than CHIEF_MAX_YAYS (${CHIEF_MAX_YAYS})`
+    );
+  }
 
   return yays.slice(0, Number(length.result as bigint)).map(yay => {
     if (yay.status === 'failure') throw yay.error;

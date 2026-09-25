@@ -60,6 +60,24 @@ describe('getSlateAddresses', () => {
     await expect(getSlateAddresses(1, CHIEF, SLATE)).rejects.toThrow('rpc error');
   });
 
+  it('throws instead of truncating a slate longer than CHIEF_MAX_YAYS', async () => {
+    multicall.mockResolvedValue([
+      { status: 'success', result: BigInt(CHIEF_MAX_YAYS + 1) },
+      ...Array(CHIEF_MAX_YAYS).fill({ status: 'success', result: SPELL_A })
+    ] as never);
+
+    await expect(getSlateAddresses(1, CHIEF, SLATE)).rejects.toThrow(/more than CHIEF_MAX_YAYS/);
+  });
+
+  it('throws when the length read fails', async () => {
+    multicall.mockResolvedValue([
+      { status: 'failure', error: new Error('length failed') },
+      ...Array(CHIEF_MAX_YAYS).fill(outOfBounds)
+    ] as never);
+
+    await expect(getSlateAddresses(1, CHIEF, SLATE)).rejects.toThrow('length failed');
+  });
+
   it('throws when the RPC call fails', async () => {
     multicall.mockRejectedValue(new Error('timeout'));
 

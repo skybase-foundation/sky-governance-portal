@@ -51,7 +51,16 @@ export const useVotedProposals = (passedAddress?: string): VotedProposalsRespons
         ? await getSlateAddresses(chainId, chiefAddress[chainId], votedSlate)
         : [];
     },
-    { revalidateOnMount: true, refreshInterval: 60000, revalidateOnFocus: false }
+    {
+      revalidateOnMount: true,
+      refreshInterval: 60000,
+      revalidateOnFocus: false,
+      // refreshInterval pauses while the read is failing, and SWR's default retry backs off exponentially
+      // (up to ~30 minutes), so retry at a fixed pace to pick the slate back up soon after the RPC recovers
+      onErrorRetry: (_error, _key, _config, revalidate, opts) => {
+        setTimeout(revalidate, 15000, opts);
+      }
+    }
   );
 
   return {
