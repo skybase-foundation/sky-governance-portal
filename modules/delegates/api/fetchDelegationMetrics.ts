@@ -6,8 +6,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-import { gqlRequest } from 'modules/gql/gqlRequest';
-import { allDelegates } from 'modules/gql/queries/subgraph/allDelegates';
+import { fetchAllDelegates } from './fetchAllDelegates';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
 import { formatEther } from 'viem';
@@ -18,6 +17,7 @@ interface DelegationMetrics {
 }
 
 interface Delegate {
+  id: string;
   totalDelegated: string;
   delegators: number;
 }
@@ -25,12 +25,7 @@ interface Delegate {
 export async function fetchDelegationMetrics(network: SupportedNetworks): Promise<DelegationMetrics> {
   const chainId = networkNameToChainId(network);
 
-  const res = await gqlRequest<{ delegates: Delegate[] }>({
-    chainId,
-    query: allDelegates(chainId)
-  });
-
-  const delegates = res.delegates || [];
+  const delegates = await fetchAllDelegates<Delegate>(chainId);
 
   // Sum totalDelegated and delegators across all delegates
   const totalSkyDelegated = formatEther(

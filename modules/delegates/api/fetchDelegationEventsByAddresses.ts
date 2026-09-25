@@ -9,6 +9,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 import logger from 'lib/logger';
 import { gqlRequest } from 'modules/gql/gqlRequest';
 import { delegateHistoryArray } from 'modules/gql/queries/subgraph/delegateHistoryArray';
+import { fetchAllPages } from 'modules/gql/fetchAllPages';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
 import { SkyLockedDelegateApiResponse } from '../types';
@@ -23,13 +24,15 @@ export async function fetchDelegationEventsByAddresses(
     network === SupportedNetworks.TENDERLY ? stakingEngineAddressTestnet : stakingEngineAddressMainnet;
   try {
     const chainId = networkNameToChainId(network);
-    const data = await gqlRequest({
-      chainId,
-      query: delegateHistoryArray(chainId, addresses, [engine.toLowerCase()])
+    const delegationHistory: any = await fetchAllPages(async cursor => {
+      const data = await gqlRequest({
+        chainId,
+        query: delegateHistoryArray(chainId, addresses, [engine.toLowerCase()], cursor)
+      });
+      return data.delegationHistory || [];
     });
-    const flattenedData = data.delegates.flatMap(delegate => delegate.delegationHistory);
 
-    const addressData: SkyLockedDelegateApiResponse[] = flattenedData.map(x => {
+    const addressData: SkyLockedDelegateApiResponse[] = delegationHistory.map(x => {
       return {
         delegateContractAddress: x.delegate.address,
         immediateCaller: x.delegator,

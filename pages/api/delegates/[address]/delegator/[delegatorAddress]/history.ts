@@ -10,6 +10,7 @@ import { NextApiRequest, NextApiResponse } from 'next';
 import { DEFAULT_NETWORK, SupportedNetworks } from 'modules/web3/constants/networks';
 import { ApiError } from 'modules/app/api/ApiError';
 import { gqlRequest } from 'modules/gql/gqlRequest';
+import { fetchAllPages } from 'modules/gql/fetchAllPages';
 import { delegatorDelegateHistory } from 'modules/gql/queries/subgraph/delegatorDelegateHistory';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
 import { isAddress } from 'viem';
@@ -111,16 +112,21 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
 
     try {
       const chainId = networkNameToChainId(network);
-      const result = await gqlRequest<any>({
-        chainId,
-        query: delegatorDelegateHistory(chainId, delegatorAddress.toLowerCase(), address.toLowerCase())
+      const delegationHistories = await fetchAllPages<any>(async cursor => {
+        const result = await gqlRequest<any>({
+          chainId,
+          query: delegatorDelegateHistory(chainId, delegatorAddress.toLowerCase(), address.toLowerCase(), cursor)
+        });
+        return result.delegationHistories || [];
       });
 
       return res.status(200).json({
-        delegationHistory: (result.delegationHistories || []).map(entry => ({
-          ...entry,
-          delegate: entry.delegate ? { ...entry.delegate, id: entry.delegate.address } : entry.delegate
-        })),
+        delegationHistory: delegationHistories
+          .sort((a, b) => Number(b.timestamp) - Number(a.timestamp))
+          .map(entry => ({
+            ...entry,
+            delegate: entry.delegate ? { ...entry.delegate, id: entry.delegate.address } : entry.delegate
+          })),
         delegateAddress: address.toLowerCase(),
         delegatorAddress: delegatorAddress.toLowerCase()
       });

@@ -10,28 +10,30 @@ import { PollInputFormat, PollResultDisplay, PollVictoryConditions } from 'modul
 import { Poll } from 'modules/polling/types';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { gqlRequest } from '../../../../modules/gql/gqlRequest';
+import { mockTallyIndexer } from './__helpers__/mockTallyIndexer';
 import { fetchPollTally } from '../fetchPollTally';
 import { Mock, vi } from 'vitest';
 
 vi.mock('modules/gql/gqlRequest');
 
 const mockVotes = (votes: { voter: string; choice: string; sky: string }[]) => {
-  (gqlRequest as Mock)
-    .mockResolvedValueOnce({})
-    .mockResolvedValueOnce({ pollVotes: [] })
-    .mockResolvedValueOnce({
+  mockTallyIndexer(gqlRequest as Mock, {
+    delegates: {},
+    mainnet: { pollVotes: [] },
+    arbitrum: {
       arbitrumPoll: {
         startDate: 50,
         endDate: 200,
         votes: votes.map(v => ({ voter: { id: v.voter }, choice: v.choice, blockTime: 100 }))
       }
-    })
-    .mockResolvedValueOnce({
+    },
+    weights: {
       voters: votes.map(v => ({
         id: v.voter,
         v2VotingPowerChanges: [{ newBalance: `${v.sky}000000000000000000` }]
       }))
-    });
+    }
+  });
 };
 
 describe('Fetch tally with option 0 as the winner', () => {

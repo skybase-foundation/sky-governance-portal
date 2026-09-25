@@ -13,6 +13,7 @@ export const arbitrumPollsQueryWithWhitelist = (chainId: number, skip: number, c
   arbitrumPolls: ArbitrumPoll(
     limit: 1000
     offset: ${skip}
+    order_by: { id: asc }
     where: { _and: [
       { chainId: { _eq: ${chainId} } },
       { url: { _is_null: false } },
@@ -35,6 +36,7 @@ export const arbitrumPollsQuery = (chainId: number, skip: number) => /* GraphQL 
   arbitrumPolls: ArbitrumPoll(
     limit: 1000
     offset: ${skip}
+    order_by: { id: asc }
     where: { _and: [
       { chainId: { _eq: ${chainId} } },
       { url: { _is_null: false } },
