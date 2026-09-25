@@ -48,7 +48,7 @@ export const useVotedProposals = (passedAddress?: string): VotedProposalsRespons
     addressToUse ? `${addressToUse}/executive/voted-proposals-${chainId}-${votedSlate}` : null,
     async () => {
       return votedSlate && votedSlate !== ZERO_SLATE_HASH
-        ? await getSlateAddresses(chainId, chiefAddress[chainId], chiefAbi, votedSlate)
+        ? await getSlateAddresses(chainId, chiefAddress[chainId], votedSlate)
         : [];
     },
     { revalidateOnMount: true, refreshInterval: 60000, revalidateOnFocus: false }
