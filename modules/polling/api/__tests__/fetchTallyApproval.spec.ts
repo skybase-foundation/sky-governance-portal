@@ -10,6 +10,7 @@ import { PollInputFormat, PollResultDisplay, PollVictoryConditions } from 'modul
 import { Poll } from 'modules/polling/types';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { gqlRequest } from '../../../../modules/gql/gqlRequest';
+import { mockTallyIndexer } from './__helpers__/mockTallyIndexer';
 import { fetchPollTally } from '../fetchPollTally';
 import { Mock, vi } from 'vitest';
 
@@ -41,12 +42,12 @@ describe('Fetch tally approval', () => {
   } as any as Poll;
 
   it('gives first option as winner if it has most sky', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -58,8 +59,8 @@ describe('Fetch tally approval', () => {
             { voter: { id: '0xdef' }, choice: '4', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '820212580000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '17363000000000000000' }] },
@@ -67,7 +68,8 @@ describe('Fetch tally approval', () => {
           { id: '0xabc', v2VotingPowerChanges: [{ newBalance: '14000000000000000000' }] },
           { id: '0xdef', v2VotingPowerChanges: [{ newBalance: '0' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
@@ -137,12 +139,12 @@ describe('Fetch tally approval', () => {
   });
 
   it('gives no option as winner if both have the same SKY voting weight', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -153,15 +155,16 @@ describe('Fetch tally approval', () => {
             { voter: { id: '0xabc' }, choice: '4', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '820212580000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '17363000000000000000' }] },
           { id: '0x789', v2VotingPowerChanges: [{ newBalance: '14000000000000000000' }] },
           { id: '0xabc', v2VotingPowerChanges: [{ newBalance: '0' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
@@ -231,21 +234,22 @@ describe('Fetch tally approval', () => {
   });
 
   it('Ignores abstain', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
           votes: [{ voter: { id: '0x123' }, choice: '0', blockTime: 100 }]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [{ id: '0x123', v2VotingPowerChanges: [{ newBalance: '400000000000000000000' }] }]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 

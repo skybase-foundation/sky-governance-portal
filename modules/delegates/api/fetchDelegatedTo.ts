@@ -9,7 +9,8 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 import { formatEther, parseEther } from 'viem';
 import logger from 'lib/logger';
 import { gqlRequest } from 'modules/gql/gqlRequest';
-import { allDelegates } from 'modules/gql/queries/subgraph/allDelegates';
+import { fetchAllPages } from 'modules/gql/fetchAllPages';
+import { fetchAllDelegates } from './fetchAllDelegates';
 import { delegatorHistory } from 'modules/gql/queries/subgraph/delegatorHistory';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
@@ -22,18 +23,17 @@ export async function fetchDelegatedTo(
   try {
     // TODO: This information could be aggregated in the "mkrDelegatedTo" query in gov-polling-db, and returned there, as an improvement.
     const chainId = networkNameToChainId(network);
-    const delegatesData = await gqlRequest({
-      chainId,
-      query: allDelegates(chainId)
-    });
-    const delegates = delegatesData.delegates;
+    const delegates = await fetchAllDelegates(chainId);
 
     // Returns the records with the aggregated delegated data
-    const data = await gqlRequest({
-      chainId,
-      query: delegatorHistory(chainId, address.toLowerCase())
+    const delegationHistories: any = await fetchAllPages(async cursor => {
+      const data = await gqlRequest({
+        chainId,
+        query: delegatorHistory(chainId, address.toLowerCase(), cursor)
+      });
+      return data.delegationHistories || [];
     });
-    const res: SKYDelegatedToResponse[] = data.delegationHistories.map(x => {
+    const res: SKYDelegatedToResponse[] = delegationHistories.map(x => {
       return {
         delegateContractAddress: x.delegate.address,
         lockAmount: x.amount,

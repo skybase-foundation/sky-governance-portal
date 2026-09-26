@@ -10,6 +10,7 @@ import { PollInputFormat, PollResultDisplay, PollVictoryConditions } from 'modul
 import { Poll } from 'modules/polling/types';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { gqlRequest } from '../../../../modules/gql/gqlRequest';
+import { mockTallyIndexer } from './__helpers__/mockTallyIndexer';
 import { fetchPollTally } from '../fetchPollTally';
 import { Mock, vi } from 'vitest';
 
@@ -41,30 +42,12 @@ describe('Fetch tally majority', () => {
   } as any as Poll;
 
   it('Does not find winner if it doesnt pass the majority percent', async () => {
-    (gqlRequest as Mock)
-      // .mockResolvedValueOnce({
-      //   voteAddressSkyWeightsAtTime: {
-      //     nodes: [
-      //       {
-      //         optionIdRaw: '1',
-      //         skySupport: '100'
-      //       },
-      //       {
-      //         optionIdRaw: '2',
-      //         skySupport: '90'
-      //       },
-      //       {
-      //         optionIdRaw: '3',
-      //         skySupport: '80'
-      //       }
-      //     ]
-      //   }
-      // });
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -74,14 +57,15 @@ describe('Fetch tally majority', () => {
             { voter: { id: '0x789' }, choice: '3', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '100000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '90000000000000000000' }] },
           { id: '0x789', v2VotingPowerChanges: [{ newBalance: '80000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
@@ -141,12 +125,12 @@ describe('Fetch tally majority', () => {
   });
 
   it('Does find a winner if it pass the majority percent', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -156,14 +140,15 @@ describe('Fetch tally majority', () => {
             { voter: { id: '0x789' }, choice: '3', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '200000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '90000000000000000000' }] },
           { id: '0x789', v2VotingPowerChanges: [{ newBalance: '80000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
