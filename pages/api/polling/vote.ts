@@ -38,6 +38,9 @@ export const API_VOTE_ERRORS = {
   POLLIDS_CANNOT_BE_EMPTY: 'PollIds array cannot be empty.',
   OPTIONIDS_MUST_BE_ARRAY_NUMBERS: 'OptionIds must be an array of numbers.',
   OPTIONIDS_CANNOT_BE_EMPTY: 'OptionIds array cannot be empty.',
+  POLLIDS_OPTIONIDS_LENGTH_MISMATCH: 'PollIds and optionIds must have the same length.',
+  DUPLICATE_POLLIDS: 'PollIds cannot contain duplicates.',
+  BACKDOOR_SINGLE_POLL_ONLY: 'Backdoor votes can only include one poll.',
   NONCE_MUST_BE_NUMBER: 'Nonce must be a number.',
   EXPIRY_MUST_BE_NUMBER: 'Expiry must be a number.',
   SIGNATURE_MUST_BE_STRING: 'Signature must be a string.',
@@ -117,6 +120,16 @@ export default withApiHandler(
         skipDiscord
       });
     }
+    if (pollIds.length !== optionIds.length) {
+      await throwError({
+        error: API_VOTE_ERRORS.POLLIDS_OPTIONIDS_LENGTH_MISMATCH,
+        body: req.body,
+        skipDiscord
+      });
+    }
+    if (new Set(pollIds.map(pollId => parseInt(pollId))).size !== pollIds.length) {
+      await throwError({ error: API_VOTE_ERRORS.DUPLICATE_POLLIDS, body: req.body, skipDiscord });
+    }
     if (typeof nonce !== 'number') {
       await throwError({ error: API_VOTE_ERRORS.NONCE_MUST_BE_NUMBER, body: req.body, skipDiscord });
     }
@@ -138,6 +151,10 @@ export default withApiHandler(
 
     if (secret && secret !== config.GASLESS_BACKDOOR_SECRET) {
       await throwError({ error: API_VOTE_ERRORS.WRONG_SECRET, body: req.body, skipDiscord });
+    }
+
+    if (secret && pollIds.length > 1) {
+      await throwError({ error: API_VOTE_ERRORS.BACKDOOR_SINGLE_POLL_ONLY, body: req.body, skipDiscord });
     }
 
     const publicClient = getGaslessPublicClient(networkNameToChainId(network));
