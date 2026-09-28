@@ -16,8 +16,9 @@ export function useDelegatedTo(
   network: SupportedNetworks
 ): {
   data: SKYDelegatedToAPIResponse | undefined;
+  error: Error | undefined;
 } {
-  const { data } = useSWR<SKYDelegatedToAPIResponse>(
+  const { data, error } = useSWR<SKYDelegatedToAPIResponse>(
     !!address && !!network ? `/api/address/${address}/delegated-to?network=${network}` : null,
     fetchJson,
     {
@@ -28,6 +29,7 @@ export function useDelegatedTo(
   );
 
   return {
-    data
+    data,
+    error
   };
 }

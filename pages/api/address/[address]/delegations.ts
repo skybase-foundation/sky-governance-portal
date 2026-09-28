@@ -46,6 +46,22 @@ import { formatEther, parseEther } from 'viem';
  *          application/json:
  *            schema:
  *              $ref: '#/definitions/SKYAddressDelegationsAPIResponse'
+ *      500:
+ *        description: The indexer could not be queried. Returned instead of an empty list, so a failure is not mistaken for no delegations.
+ *        content:
+ *          application/json:
+ *            schema:
+ *              type: object
+ *              properties:
+ *                error:
+ *                  type: object
+ *                  properties:
+ *                    code:
+ *                      type: string
+ *                      example: unexpected_error
+ *                    message:
+ *                      type: string
+ *                      example: Error fetching gov polling data
  * definitions:
  *  DelegateInfo:
  *    type: object
