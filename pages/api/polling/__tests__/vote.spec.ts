@@ -97,11 +97,61 @@ describe('/api/polling/vote API Endpoint', () => {
     });
   });
 
+  it('return 400 if pollIds and optionIds differ in length', async () => {
+    const { req, res } = mockRequestResponse('POST', {
+      voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
+      pollIds: [1, 2],
+      optionIds: [1, 2, 3]
+    });
+    await voteAPIHandler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res._getJSONData()).toEqual({
+      error: { code: 'invalid_request', message: API_VOTE_ERRORS.POLLIDS_OPTIONIDS_LENGTH_MISMATCH }
+    });
+  });
+
+  it('return 400 if pollIds contains duplicates', async () => {
+    const { req, res } = mockRequestResponse('POST', {
+      voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
+      pollIds: [1, '1', 2],
+      optionIds: [1, 1, 2]
+    });
+    await voteAPIHandler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(res._getJSONData()).toEqual({
+      error: { code: 'invalid_request', message: API_VOTE_ERRORS.DUPLICATE_POLLIDS }
+    });
+  });
+
+  it('return 400 if a backdoor vote includes more than one poll', async () => {
+    const backdoorSecret = config.GASLESS_BACKDOOR_SECRET;
+    config.GASLESS_BACKDOOR_SECRET = 'backdoor-secret';
+    const { req, res } = mockRequestResponse('POST', {
+      voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
+      pollIds: [1, 2],
+      optionIds: [1, 2],
+      nonce: 3,
+      expiry: Math.floor(Date.now() / 1000) + 3600,
+      signature: '2',
+      network: SupportedNetworks.MAINNET,
+      secret: 'backdoor-secret'
+    });
+    await voteAPIHandler(req, res);
+    config.GASLESS_BACKDOOR_SECRET = backdoorSecret;
+
+    expect(res.statusCode).toBe(400);
+    expect(res._getJSONData()).toEqual({
+      error: { code: 'invalid_request', message: API_VOTE_ERRORS.BACKDOOR_SINGLE_POLL_ONLY }
+    });
+  });
+
   it('return 400 if nonce is not a number', async () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 'ab'
     });
     await voteAPIHandler(req, res);
@@ -116,7 +166,7 @@ describe('/api/polling/vote API Endpoint', () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 1,
       expiry: 'asd'
     });
@@ -132,7 +182,7 @@ describe('/api/polling/vote API Endpoint', () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 1,
       expiry: (Date.now() - 200) / 1000
     });
@@ -148,7 +198,7 @@ describe('/api/polling/vote API Endpoint', () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 1,
       expiry: (Date.now() + 200) / 1000,
       signature: 2
@@ -165,7 +215,7 @@ describe('/api/polling/vote API Endpoint', () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 1,
       expiry: (Date.now() + 200) / 1000,
       signature: '2'
@@ -182,7 +232,7 @@ describe('/api/polling/vote API Endpoint', () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0xf6c28eC4f4f8E6C712d9242a1Ff7F9e82BeC964F',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 1,
       expiry: (Date.now() + 200) / 1000,
       signature: '2',
@@ -207,7 +257,7 @@ describe('/api/polling/vote API Endpoint', () => {
     const { req, res } = mockRequestResponse('POST', {
       voter: '0x999999cf1046e68e36E1aA2E0E07105eDDD1f08E',
       pollIds: [1, 2],
-      optionIds: [1, 2, 3],
+      optionIds: [1, 2],
       nonce: 3,
       expiry: (Date.now() + 200) / 1000,
       signature: '2',
