@@ -16,6 +16,22 @@ import { matterWrapper } from 'lib/matter';
 import { markdownToHtml } from 'lib/markdown';
 import { getPollTags } from './getPollTags';
 
+// The previous/next polls are looked up by pollId, the poll list is not guaranteed to be in poll order
+function getPollCtx(pollList: PollListItem[], pollId: number): Poll['ctx'] {
+  let prev: PollListItem | undefined;
+  let next: PollListItem | undefined;
+
+  for (const entry of pollList) {
+    if (entry.pollId < pollId && (!prev || entry.pollId > prev.pollId)) prev = entry;
+    if (entry.pollId > pollId && (!next || entry.pollId < next.pollId)) next = entry;
+  }
+
+  return {
+    prev: prev ? { slug: prev.slug } : null,
+    next: next ? { slug: next.slug } : null
+  };
+}
+
 export async function fetchSinglePoll(
   network: SupportedNetworks,
   pollIdOrSlug: number | string
@@ -46,12 +62,12 @@ export async function fetchSinglePoll(
 
   const cachedPoll = await cacheGet(pollDetailsCacheKey, network, ONE_WEEK_IN_MS, 'HGET', String(pollId));
   if (cachedPoll) {
-    return JSON.parse(cachedPoll);
+    // The cached ctx goes stale when the poll list changes (e.g. a new poll is added), so it's derived on every read
+    return { ...JSON.parse(cachedPoll), ctx: getPollCtx(pollList, pollId) };
   }
 
   // If poll is not cached, fetch individual poll
-  const pollInListIndex = pollList.findIndex(entry => entry.pollId === pollId);
-  const pollInList = pollList[pollInListIndex];
+  const pollInList = pollList.find(entry => entry.pollId === pollId);
   if (!pollInList) {
     return null;
   }
@@ -62,8 +78,6 @@ export async function fetchSinglePoll(
   const html = await markdownToHtml(content);
 
   const pollTags = await getPollTags();
-  const prevSlug = pollList[pollInListIndex - 1]?.slug;
-  const nextSlug = pollList[pollInListIndex + 1]?.slug;
 
   const poll = {
     ...pollInList,
@@ -71,18 +85,7 @@ export async function fetchSinglePoll(
     endDate: new Date(pollInList.endDate),
     content: html,
     tags: pollInList.tags.map(tag => pollTags.find(pollTag => pollTag.id === tag)).filter(tag => !!tag),
-    ctx: {
-      prev: prevSlug
-        ? {
-            slug: prevSlug
-          }
-        : null,
-      next: nextSlug
-        ? {
-            slug: nextSlug
-          }
-        : null
-    }
+    ctx: getPollCtx(pollList, pollId)
   };
 
   // Individual polls contain more metadata than the poll-list array and are used to render the poll detail page.
