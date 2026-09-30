@@ -43,7 +43,6 @@ import { getPollsPaginated } from 'modules/polling/api/fetchPolls';
 import { InternalLink } from 'modules/app/components/InternalLink';
 import { ExternalLink } from 'modules/app/components/ExternalLink';
 import { parseRawUrl } from 'modules/polling/helpers/parseRawUrl';
-import usePollsStore from 'modules/polling/stores/polls';
 import { DialogOverlay, DialogContent } from 'modules/app/components/Dialog';
 import BoxWithClose from 'modules/app/components/BoxWithClose';
 import { PollOrderByEnum, SKY_PORTAL_START_DATE_MAINNET } from 'modules/polling/polling.constants';
@@ -60,9 +59,8 @@ const editMarkdown = (content: string) => {
 };
 
 const PollView = ({ poll }: { poll: Poll }) => {
-  const filteredPollData = usePollsStore(state => state.filteredPolls);
-  const [prevSlug, setPrevSlug] = useState(poll.ctx?.prev?.slug);
-  const [nextSlug, setNextSlug] = useState(poll.ctx?.next?.slug);
+  const prevSlug = poll.ctx?.prev?.slug;
+  const nextSlug = poll.ctx?.next?.slug;
 
   const { account } = useAccount();
   const bpi = useBreakpointIndex({ defaultIndex: 2 });
@@ -77,19 +75,6 @@ const PollView = ({ poll }: { poll: Poll }) => {
   const [mobileVotingPoll, setMobileVotingPoll] = useState<Poll>(poll);
 
   const { tally } = usePollTally(poll.pollId, 60000);
-
-  useEffect(() => {
-    if (filteredPollData && filteredPollData.length > 0) {
-      const currentIdx = filteredPollData?.findIndex(({ pollId }) => pollId === poll.pollId);
-      const previousPoll = filteredPollData[currentIdx - 1];
-      const nextPoll = filteredPollData[currentIdx + 1];
-      setPrevSlug(previousPoll?.slug);
-      setNextSlug(nextPoll?.slug);
-    } else {
-      setPrevSlug(poll.ctx?.prev?.slug);
-      setNextSlug(poll.ctx?.next?.slug);
-    }
-  }, [filteredPollData, poll]);
 
   return (
     <PrimaryLayout sx={{ maxWidth: 'dashboard' }}>
