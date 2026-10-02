@@ -24,6 +24,7 @@ import { PollInputFormat, PollResultDisplay, PollVictoryConditions } from 'modul
 import { Poll } from 'modules/polling/types';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { gqlRequest } from '../../../../modules/gql/gqlRequest';
+import { mockTallyIndexer } from './__helpers__/mockTallyIndexer';
 import { fetchPollTally } from '../fetchPollTally';
 import { Mock, vi } from 'vitest';
 
@@ -63,10 +64,10 @@ const singleChoicePoll: Poll = {
 
 describe('Fetch tally - ballot amplification (Immunefi #82775)', () => {
   it('counts a duplicated-byte single-choice ballot once and does not flip the winner', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({}) // fetchDelegateAddresses
-      .mockResolvedValueOnce({ pollVotes: [] }) // mainnet voters
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: { pollVotes: [] },
+      arbitrum: {
         arbitrumPoll: {
           startDate: POLL_START,
           endDate: POLL_END,
@@ -77,13 +78,14 @@ describe('Fetch tally - ballot amplification (Immunefi #82775)', () => {
             { voter: { id: '0x456' }, choice: '2', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '10000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '60000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(singleChoicePoll, SupportedNetworks.MAINNET);
 
@@ -103,10 +105,10 @@ describe('Fetch tally - ballot amplification (Immunefi #82775)', () => {
   });
 
   it('discards a single-choice ballot that decodes to multiple distinct options', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({}) // fetchDelegateAddresses
-      .mockResolvedValueOnce({ pollVotes: [] }) // mainnet voters
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: { pollVotes: [] },
+      arbitrum: {
         arbitrumPoll: {
           startDate: POLL_START,
           endDate: POLL_END,
@@ -117,13 +119,14 @@ describe('Fetch tally - ballot amplification (Immunefi #82775)', () => {
             { voter: { id: '0x456' }, choice: '2', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '100000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '60000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(singleChoicePoll, SupportedNetworks.MAINNET);
 
@@ -168,10 +171,10 @@ const chooseFreePoll: Poll = {
 
 describe('Fetch tally - approval poll is not amplifiable (Immunefi #82775)', () => {
   it('counts a duplicated-byte option once while still counting a legitimate multi-option ballot', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({}) // fetchDelegateAddresses
-      .mockResolvedValueOnce({ pollVotes: [] }) // mainnet voters
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: { pollVotes: [] },
+      arbitrum: {
         arbitrumPoll: {
           startDate: POLL_START,
           endDate: POLL_END,
@@ -182,13 +185,14 @@ describe('Fetch tally - approval poll is not amplifiable (Immunefi #82775)', () 
             { voter: { id: '0x456' }, choice: AMPLIFIED_YES_CHOICE, blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '40000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '10000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(chooseFreePoll, SupportedNetworks.MAINNET);
 

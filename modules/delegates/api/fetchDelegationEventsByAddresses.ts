@@ -6,9 +6,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-import logger from 'lib/logger';
 import { gqlRequest } from 'modules/gql/gqlRequest';
 import { delegateHistoryArray } from 'modules/gql/queries/subgraph/delegateHistoryArray';
+import { fetchAllPages } from 'modules/gql/fetchAllPages';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
 import { SkyLockedDelegateApiResponse } from '../types';
@@ -21,29 +21,26 @@ export async function fetchDelegationEventsByAddresses(
 ): Promise<SkyLockedDelegateApiResponse[]> {
   const engine =
     network === SupportedNetworks.TENDERLY ? stakingEngineAddressTestnet : stakingEngineAddressMainnet;
-  try {
-    const chainId = networkNameToChainId(network);
+  const chainId = networkNameToChainId(network);
+  const delegationHistory: any = await fetchAllPages(async cursor => {
     const data = await gqlRequest({
       chainId,
-      query: delegateHistoryArray(chainId, addresses, [engine.toLowerCase()])
+      query: delegateHistoryArray(chainId, addresses, [engine.toLowerCase()], cursor)
     });
-    const flattenedData = data.delegates.flatMap(delegate => delegate.delegationHistory);
+    return data.delegationHistory || [];
+  });
 
-    const addressData: SkyLockedDelegateApiResponse[] = flattenedData.map(x => {
-      return {
-        delegateContractAddress: x.delegate.address,
-        immediateCaller: x.delegator,
-        lockAmount: formatEther(x.amount),
-        blockNumber: x.blockNumber,
-        blockTimestamp: new Date(parseInt(x.timestamp) * 1000).toISOString(),
-        hash: x.txnHash,
-        callerLockTotal: formatEther(x.accumulatedAmount),
-        isStakingEngine: x.isStakingEngine
-      };
-    });
-    return addressData;
-  } catch (e) {
-    logger.error('fetchDelegationEventsByAddresses: Error fetching delegation events', e.message);
-    return [];
-  }
+  const addressData: SkyLockedDelegateApiResponse[] = delegationHistory.map(x => {
+    return {
+      delegateContractAddress: x.delegate.address,
+      immediateCaller: x.delegator,
+      lockAmount: formatEther(x.amount),
+      blockNumber: x.blockNumber,
+      blockTimestamp: new Date(parseInt(x.timestamp) * 1000).toISOString(),
+      hash: x.txnHash,
+      callerLockTotal: formatEther(x.accumulatedAmount),
+      isStakingEngine: x.isStakingEngine
+    };
+  });
+  return addressData;
 }

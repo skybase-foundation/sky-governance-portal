@@ -78,10 +78,6 @@ export default function Footer(): React.ReactElement {
         {
           url: 'https://www.notion.so/Sky-Brand-Kit-ec871fa39f9d41bf9cc4446e7d1f6997?pvs=4',
           title: 'Media Assets'
-        },
-        {
-          url: 'https://sky.money/faq',
-          title: 'FAQs'
         }
       ]
     },

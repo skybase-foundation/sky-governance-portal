@@ -42,7 +42,7 @@ import { ErrorBoundary } from 'modules/app/components/ErrorBoundary';
 import { getPollsPaginated } from 'modules/polling/api/fetchPolls';
 import { InternalLink } from 'modules/app/components/InternalLink';
 import { ExternalLink } from 'modules/app/components/ExternalLink';
-import usePollsStore from 'modules/polling/stores/polls';
+import { parseRawUrl } from 'modules/polling/helpers/parseRawUrl';
 import { DialogOverlay, DialogContent } from 'modules/app/components/Dialog';
 import BoxWithClose from 'modules/app/components/BoxWithClose';
 import { PollOrderByEnum, SKY_PORTAL_START_DATE_MAINNET } from 'modules/polling/polling.constants';
@@ -58,20 +58,13 @@ const editMarkdown = (content: string) => {
   );
 };
 
-// Replaces the raw GitHub domain name, adds the 'blob' path and adds the link to the review section
-const parseRawUrl = (rawUrl: string) => {
-  const [protocol, separator, , org, repo, ...route] = rawUrl.split('/');
-  const url = [protocol, separator, 'github.com', org, repo, 'blob', ...route].join('/');
-  return url + '#review';
-};
-
 const PollView = ({ poll }: { poll: Poll }) => {
-  const filteredPollData = usePollsStore(state => state.filteredPolls);
-  const [prevSlug, setPrevSlug] = useState(poll.ctx?.prev?.slug);
-  const [nextSlug, setNextSlug] = useState(poll.ctx?.next?.slug);
+  const prevSlug = poll.ctx?.prev?.slug;
+  const nextSlug = poll.ctx?.next?.slug;
 
   const { account } = useAccount();
   const bpi = useBreakpointIndex({ defaultIndex: 2 });
+  const reviewUrl = poll.url ? parseRawUrl(poll.url) : '';
   const [shownOptions, setShownOptions] = useState(6);
   const [overlayOpen, setOverlayOpen] = useState(false);
 
@@ -82,19 +75,6 @@ const PollView = ({ poll }: { poll: Poll }) => {
   const [mobileVotingPoll, setMobileVotingPoll] = useState<Poll>(poll);
 
   const { tally } = usePollTally(poll.pollId, 60000);
-
-  useEffect(() => {
-    if (filteredPollData && filteredPollData.length > 0) {
-      const currentIdx = filteredPollData?.findIndex(({ pollId }) => pollId === poll.pollId);
-      const previousPoll = filteredPollData[currentIdx - 1];
-      const nextPoll = filteredPollData[currentIdx + 1];
-      setPrevSlug(previousPoll?.slug);
-      setNextSlug(nextPoll?.slug);
-    } else {
-      setPrevSlug(poll.ctx?.prev?.slug);
-      setNextSlug(poll.ctx?.next?.slug);
-    }
-  }, [filteredPollData, poll]);
 
   return (
     <PrimaryLayout sx={{ maxWidth: 'dashboard' }}>
@@ -227,9 +207,9 @@ const PollView = ({ poll }: { poll: Poll }) => {
                         </ExternalLink>
                       </Box>
                     )}
-                    {poll.url && (
+                    {reviewUrl && (
                       <Box>
-                        <ExternalLink title="Review resources on GitHub" href={parseRawUrl(poll.url)}>
+                        <ExternalLink title="Review resources on GitHub" href={reviewUrl}>
                           <Text sx={{ fontSize: 3, fontWeight: 'semiBold' }}>
                             Review resources on GitHub
                             <Icon sx={{ ml: 2 }} name="arrowTopRight" size={2} />

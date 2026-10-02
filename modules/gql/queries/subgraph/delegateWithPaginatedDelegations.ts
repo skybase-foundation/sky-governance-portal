@@ -13,11 +13,9 @@ export const delegateWithPaginatedDelegations = (
   skip: number,
   orderBy: string,
   orderDirection: string,
-  excludeAddresses: string[],
-  stakingEngineAddresses: string[]
+  excludeAddresses: string[]
 ) => {
   const formattedExclude = excludeAddresses.map(a => `{ delegator: { _nilike: "${a}" } }`).join(', ');
-  const formattedEngines = stakingEngineAddresses.map(a => `{ delegator: { _ilike: "${a}" } }`).join(', ');
   return /* GraphQL */ `
 {
   delegate: Delegate(where: { id: { _ilike: "${chainId}-${id}" } }, limit: 1) {
@@ -38,9 +36,6 @@ export const delegateWithPaginatedDelegations = (
     ) {
       delegator
       amount
-    }
-    stakingEngineDelegations: delegations(where: { _or: [${formattedEngines}] }) {
-      delegator
     }
   }
 }

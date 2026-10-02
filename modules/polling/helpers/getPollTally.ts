@@ -13,15 +13,18 @@ import { Poll, PollTally } from 'modules/polling/types';
 import { getPollTallyCacheKey } from 'modules/cache/constants/cache-keys';
 import { pollHasEnded } from './utils';
 import { ONE_WEEK_IN_MS, ONE_MINUTE_IN_MS } from 'modules/app/constants/time';
+import { getIndexerSyncedThrough } from 'modules/gql/getIndexerSyncedThrough';
 
 export async function getPollTally(poll: Poll, network: SupportedNetworks): Promise<PollTally> {
-  // Builds poll tally
+  // Read indexer progress before the tally data, so the data is at least as fresh as the progress we check.
+  // An ended poll's tally is only cached as final once the indexer has processed every block up to the end.
+  const pollEndUnix = new Date(poll.endDate).getTime() / 1000;
+  const isFinal = pollHasEnded(poll) && (await getIndexerSyncedThrough(network)) > pollEndUnix;
+
   const tally: PollTally = await fetchPollTally(poll, network);
 
-  const pollEnded = pollHasEnded(poll);
-
   const cacheKey = getPollTallyCacheKey(poll.pollId);
-  cacheSet(cacheKey, JSON.stringify(tally), network, pollEnded ? ONE_WEEK_IN_MS : ONE_MINUTE_IN_MS);
+  cacheSet(cacheKey, JSON.stringify(tally), network, isFinal ? ONE_WEEK_IN_MS : ONE_MINUTE_IN_MS);
 
   return tally;
 }

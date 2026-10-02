@@ -10,6 +10,7 @@ import { PollInputFormat, PollResultDisplay, PollVictoryConditions } from 'modul
 import { Poll } from 'modules/polling/types';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { gqlRequest } from '../../../../modules/gql/gqlRequest';
+import { mockTallyIndexer } from './__helpers__/mockTallyIndexer';
 import { fetchPollTally } from '../fetchPollTally';
 import { Mock, vi } from 'vitest';
 
@@ -41,12 +42,12 @@ describe('Fetch tally plurality', () => {
   } as any as Poll;
 
   it('gives expected results', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -58,8 +59,8 @@ describe('Fetch tally plurality', () => {
             { voter: { id: '0x1aa' }, choice: '1', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '40000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '60000000000000000000' }] },
@@ -67,7 +68,8 @@ describe('Fetch tally plurality', () => {
           { id: '0xabc', v2VotingPowerChanges: [{ newBalance: '32000000000000000000' }] },
           { id: '0x1aa', v2VotingPowerChanges: [{ newBalance: '600000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
@@ -137,12 +139,12 @@ describe('Fetch tally plurality', () => {
   });
 
   it('gives expected results for adjusted data', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -156,8 +158,8 @@ describe('Fetch tally plurality', () => {
             { voter: { id: '0x3cc' }, choice: '2', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '40000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '60000000000000000000' }] },
@@ -167,7 +169,8 @@ describe('Fetch tally plurality', () => {
           { id: '0x2bb', v2VotingPowerChanges: [{ newBalance: '32000000000000000000' }] },
           { id: '0x3cc', v2VotingPowerChanges: [{ newBalance: '1200000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
@@ -237,21 +240,19 @@ describe('Fetch tally plurality', () => {
   });
 
   it('parses correctly a plurality with no votes', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
           votes: []
         }
-      })
-      .mockResolvedValueOnce({
-        voters: []
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 
@@ -321,12 +322,12 @@ describe('Fetch tally plurality', () => {
   });
 
   it('gives expected results for tally with abstain majority', async () => {
-    (gqlRequest as Mock)
-      .mockResolvedValueOnce({})
-      .mockResolvedValueOnce({
+    mockTallyIndexer(gqlRequest as Mock, {
+      delegates: {},
+      mainnet: {
         pollVotes: []
-      })
-      .mockResolvedValueOnce({
+      },
+      arbitrum: {
         arbitrumPoll: {
           startDate: 50,
           endDate: 200,
@@ -340,8 +341,8 @@ describe('Fetch tally plurality', () => {
             { voter: { id: '0x3cc' }, choice: '0', blockTime: 100 }
           ]
         }
-      })
-      .mockResolvedValueOnce({
+      },
+      weights: {
         voters: [
           { id: '0x123', v2VotingPowerChanges: [{ newBalance: '40000000000000000000' }] },
           { id: '0x456', v2VotingPowerChanges: [{ newBalance: '60000000000000000000' }] },
@@ -351,7 +352,8 @@ describe('Fetch tally plurality', () => {
           { id: '0x2bb', v2VotingPowerChanges: [{ newBalance: '32000000000000000000' }] },
           { id: '0x3cc', v2VotingPowerChanges: [{ newBalance: '1200000000000000000000' }] }
         ]
-      });
+      }
+    });
 
     const result = await fetchPollTally(mockPoll, SupportedNetworks.MAINNET);
 

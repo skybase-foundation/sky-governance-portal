@@ -30,7 +30,7 @@ export default function PollWinningOptionBox({
   poll: PollListItem | Poll;
   tally: PollTally;
 }): React.ReactElement {
-  const isFinishedWithNoWinner = !tally.winner && !isActivePoll(poll);
+  const isFinishedWithNoWinner = tally.winner === null && !isActivePoll(poll);
 
   const numberOfLeadingOptions = tally.results.filter(
     result =>

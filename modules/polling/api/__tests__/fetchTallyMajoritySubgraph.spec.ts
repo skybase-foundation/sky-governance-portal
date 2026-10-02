@@ -44,6 +44,9 @@ describe('Fetch tally majority', () => {
     // Set up the mock to return different responses based on the query
     (gqlRequest as Mock).mockImplementation(args => {
       const query = args.query;
+      if (/id: \{ _gt: "[^"]+" \}/.test(query)) {
+        return Promise.resolve({});
+      }
       if (query.includes('delegates(')) {
         return Promise.resolve({ delegates: [] });
       }
@@ -177,6 +180,9 @@ describe('Fetch tally majority', () => {
     // Override the entire mock implementation for this test
     (gqlRequest as Mock).mockImplementation(args => {
       const query = args.query;
+      if (/id: \{ _gt: "[^"]+" \}/.test(query)) {
+        return Promise.resolve({});
+      }
       if (query.includes('delegates(')) {
         return Promise.resolve({ delegates: [] });
       }

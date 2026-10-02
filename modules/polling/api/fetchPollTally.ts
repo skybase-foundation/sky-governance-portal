@@ -112,7 +112,7 @@ export async function fetchPollTally(poll: Poll, network: SupportedNetworks): Pr
   // Victory conditions work like an "if-else", if the first does not find a winner, we move to the next one
   poll.parameters.victoryConditions.forEach((victoryGroup, index) => {
     // A winner has been found, skip.
-    if (winnerOption.winner) {
+    if (winnerOption.winner !== null) {
       return;
     }
 
@@ -136,7 +136,7 @@ export async function fetchPollTally(poll: Poll, network: SupportedNetworks): Pr
             allWinners = false;
           }
 
-          if (!andWinner?.winner) {
+          if (andWinner === null || andWinner.winner === null) {
             andWinner = {
               winner: satisfiesConditions.length > 0 ? satisfiesConditions[0] : null,
               results: null
@@ -152,7 +152,7 @@ export async function fetchPollTally(poll: Poll, network: SupportedNetworks): Pr
 
         // For all the other conditions except comparison, we find the winner and compare.
         const winnerOptionAnd = findWinner(condition, filteredVotes, poll);
-        if (!winnerOptionAnd.winner) {
+        if (winnerOptionAnd.winner === null) {
           allWinners = false;
           return;
         }
@@ -173,7 +173,7 @@ export async function fetchPollTally(poll: Poll, network: SupportedNetworks): Pr
       }
     } else {
       const winnerGroup = findWinner(victoryGroup, filteredVotes, poll);
-      if (winnerGroup.winner) {
+      if (winnerGroup.winner !== null) {
         winnerOption = winnerGroup;
         victoryConditionMatched = index;
       }
@@ -251,12 +251,12 @@ export async function fetchPollTally(poll: Poll, network: SupportedNetworks): Pr
 
   const tally: PollTally = {
     parameters: poll.parameters,
-    winner: winnerOption.winner ? winnerOption.winner : null,
+    winner: winnerOption.winner,
     victoryConditionMatched,
     numVoters: votesByAddress.length,
     totalSkyParticipation: formatEther(totalSkyParticipation).toString(),
     totalSkyActiveParticipation: formatEther(totalSkyActiveParticipation).toString(),
-    winningOptionName: winnerOption.winner ? poll.options[winnerOption.winner] : 'None found',
+    winningOptionName: winnerOption.winner !== null ? poll.options[winnerOption.winner] : 'None found',
     results,
     rounds: winnerOption.results?.rounds,
     votesByAddress

@@ -113,10 +113,6 @@ const resources: Record<ResourceType, Resource> = {
         url: 'https://mips.makerdao.com/mips/details/MIP101#2-6-aligned-delegates-ads-gov6'
       },
       {
-        linkTitle: 'What is Maker Endgame?',
-        url: 'https://endgame.makerdao.com/endgame/overview'
-      },
-      {
         linkTitle: "The MKR holder's guide to delegation",
         url: 'https://manual.makerdao.com/delegation/for-mkr-holders/mkr-holder-guide'
       }

@@ -1,0 +1,82 @@
+name: Gasless vote synthetic check
+
+# Casts one real gasless vote against production per day (signature -> /api/polling/vote ->
+# Privy relayer -> Arbitrum) and alerts the ops Discord channel when any step fails.
+# Each run spends relayer gas, so keep it to one scheduled run per day.
+on:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+    inputs:
+      simulate_failure:
+        description: Send a wrong secret to verify that the failure alert fires
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency: gasless-synthetic
+
+jobs:
+  vote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://vote.sky.money
+      NETWORK: mainnet
+    steps:
+      - name: Cast gasless vote
+        env:
+          GASLESS_BACKDOOR_SECRET: ${{ secrets.GASLESS_BACKDOOR_SECRET }}
+          SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
+        run: |
+          set -euo pipefail
+
+          secret="${GASLESS_BACKDOOR_SECRET:?GASLESS_BACKDOOR_SECRET repo secret is not set}"
+          if [ "$SIMULATE_FAILURE" = "true" ]; then
+            secret="simulated-failure"
+          fi
+
+          ballot=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/generate-test-signature?network=$NETWORK") ||
+            { echo "$ballot"; exit 1; }
+
+          vote=$(jq -c --arg secret "$secret" '. + {secret: $secret}' <<<"$ballot" |
+            curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' --data @- "$BASE_URL/api/polling/vote") ||
+            { echo "$vote"; exit 1; }
+          echo "$vote"
+
+          tx_id=$(jq -er '.transactionId' <<<"$vote")
+          echo "tx_id=$tx_id" >> "$GITHUB_ENV"
+
+      - name: Wait for the relay transaction to be mined
+        run: |
+          set -euo pipefail
+
+          for _ in $(seq 1 30); do
+            tx=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/polling/relayer-tx?network=$NETWORK&txId=$tx_id") ||
+              { echo "$tx"; exit 1; }
+            status=$(jq -r '.status' <<<"$tx")
+            echo "$status"
+            case "$status" in
+              confirmed | finalized)
+                echo "$tx"
+                exit 0
+                ;;
+              failed | execution_reverted | provider_error)
+                echo "$tx"
+                exit 1
+                ;;
+            esac
+            sleep 10
+          done
+
+          echo "Relay transaction $tx_id was not mined within 5 minutes"
+          exit 1
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GASLESS_WEBHOOK_URL: ${{ secrets.GASLESS_WEBHOOK_URL }}
+        run: |
+          jq -nc --arg content "Gasless vote synthetic check failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{content: $content}' |
+            curl -sS --fail-with-body -H 'Content-Type: application/json' --data @- "$GASLESS_WEBHOOK_URL"

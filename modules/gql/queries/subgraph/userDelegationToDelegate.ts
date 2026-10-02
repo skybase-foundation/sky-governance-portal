@@ -6,22 +6,36 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-export const userDelegationToDelegate = (chainId: number, delegate: string, delegator: string) => /* GraphQL */ `
+import { INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
+
+export const userDelegationToDelegate = (
+  chainId: number,
+  delegate: string,
+  delegator: string,
+  cursor: string
+) => /* GraphQL */ `
 {
-  delegate: Delegate(where: { id: { _ilike: "${chainId}-${delegate}" } }, limit: 1) {
-    delegationHistory(limit: 1000, where: { delegator: { _ilike: "${delegator}" } }) {
-      amount
-      accumulatedAmount
-      delegator
-      blockNumber
-      timestamp
-      txnHash
-      delegate {
-        id
-        address
-      }
-      isStakingEngine
+  delegationHistory: DelegationHistory(
+    limit: ${INDEXER_PAGE_SIZE}
+    order_by: { id: asc }
+    where: { _and: [
+      { delegate: { id: { _ilike: "${chainId}-${delegate}" } } },
+      { delegator: { _ilike: "${delegator}" } },
+      { id: { _gt: "${cursor}" } }
+    ] }
+  ) {
+    id
+    amount
+    accumulatedAmount
+    delegator
+    blockNumber
+    timestamp
+    txnHash
+    delegate {
+      id
+      address
     }
+    isStakingEngine
   }
 }
 `;

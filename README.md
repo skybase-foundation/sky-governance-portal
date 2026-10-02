@@ -74,7 +74,7 @@ The following configuration values can be added to the `.env` file:
 
 - Set `ETHERSCAN_V2_API_KEY` to a valid [Etherscan V2](https://docs.etherscan.io/etherscan-v2#why-v2) API key for Wagmi to be able to generate the contract ABIs
 
-- Set `USE_CACHE` to true if you want to use cache, if `REDIS_URL` is set it will use REDIS otherwise filesystem cache
+- Set `USE_CACHE` to true if you want to use cache. With `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` set (from the Upstash console's REST API tab) it uses Upstash over HTTP, otherwise the filesystem cache. `REDIS_URL` is no longer used. The cache is always skipped during `next build`.
 
 - Set `GASLESS_DISABLED` to `true` to disable gasless voting in UI (pre-check endpoint will fail)
 
@@ -90,17 +90,20 @@ The following configuration values can be added to the `.env` file:
 **Required for gasless voting** Set `PRIVY_WALLET_ID_MAINNET` and/or `PRIVY_WALLET_ID_TESTNET` to the Privy wallet id used to sign gasless poll votes
 **Optional** Set `GASLESS_BACKDOOR_SECRET` to allow for bypassing the gasless voting eligibility checks by anyone with the password
 
+The `Gasless vote synthetic check` workflow (`.github/workflows/gasless-synthetic.yml`) casts one gasless vote against production per day and posts to discord when it fails. It reads the `GASLESS_BACKDOOR_SECRET` and `GASLESS_WEBHOOK_URL` repository secrets, which must match the values deployed in Vercel.
+
 - Set `DASHBOARD_PASSWORD` for adding protection to the `/dashboard` route
 
 Required for e2e:
 
 - Set `TENDERLY_API_KEY` to be able to run e2e tests against forked network
+- Set `TENDERLY_MAINNET_FORK_VNET_ID` to the ID of the Tenderly VNet used as the fork source
 
 ### Tests
 
 The Governance portal includes two test suites: Vitest and E2E
 
-To run e2e, `TENDERLY_API_KEY` must be correcly configured.
+To run e2e, `TENDERLY_API_KEY` and `TENDERLY_MAINNET_FORK_VNET_ID` must be correctly configured.
 
 Install playwright
 `pnpm playwright install`

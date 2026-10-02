@@ -6,13 +6,17 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-export const allDelegatesExecSupport = (chainId: number) => /* GraphQL */ `
+import { INDEXER_PAGE_SIZE } from 'modules/gql/fetchAllPages';
+
+export const allDelegatesExecSupport = (chainId: number, cursor: string) => /* GraphQL */ `
 {
   delegates: Delegate(
-    limit: 1000,
+    limit: ${INDEXER_PAGE_SIZE}
+    order_by: { id: asc }
     where: { _and: [
       { chainId: { _eq: ${chainId} } },
-      { version: { _eq: "3" } }
+      { version: { _eq: "3" } },
+      { id: { _gt: "${cursor}" } }
     ] }
   ) {
     blockTimestamp

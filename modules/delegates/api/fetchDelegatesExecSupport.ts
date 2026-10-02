@@ -8,6 +8,7 @@ import logger from 'lib/logger';
 import { DelegateExecSupport } from '../types';
 import { TEN_MINUTES_IN_MS } from 'modules/app/constants/time';
 import { stripChainIdPrefix } from 'modules/gql/gqlUtils';
+import { fetchAllPages } from 'modules/gql/fetchAllPages';
 
 export async function fetchDelegatesExecSupport(network: SupportedNetworks): Promise<{
   error: boolean;
@@ -24,12 +25,15 @@ export async function fetchDelegatesExecSupport(network: SupportedNetworks): Pro
   try {
     const chainId = networkNameToChainId(network);
 
-    const data = await gqlRequest({
-      chainId,
-      query: allDelegatesExecSupport(chainId)
+    const delegates = await fetchAllPages<any>(async cursor => {
+      const data = await gqlRequest({
+        chainId,
+        query: allDelegatesExecSupport(chainId, cursor)
+      });
+      return data.delegates || [];
     });
 
-    const delegatesExecSupport: DelegateExecSupport[] = data.delegates.map(delegate => ({
+    const delegatesExecSupport: DelegateExecSupport[] = delegates.map(delegate => ({
       voteDelegate: delegate.address,
       votedProposals: (delegate.voter?.currentSpellsV2 || []).map(stripChainIdPrefix)
     }));
