@@ -54,6 +54,15 @@ export default function ExecutiveOverviewCard({
 
   const canVote = !!account;
 
+  // The listing gets skySupport in SKY, getStatusText expects wei like skyOnHat
+  const spellDataInWei =
+    proposal.spellData?.skySupport === undefined
+      ? proposal.spellData
+      : {
+          ...proposal.spellData,
+          skySupport: parseEther(proposal.spellData.skySupport.toString()).toString()
+        };
+
   return (
     <Card
       sx={{
@@ -185,7 +194,7 @@ export default function ExecutiveOverviewCard({
         <Divider my={0} />
         <Flex sx={{ py: 2, justifyContent: 'center' }}>
           <StatusText testId="proposal-status">
-            {getStatusText({ proposalAddress: proposal.address, spellData: proposal.spellData, skyOnHat })}
+            {getStatusText({ proposalAddress: proposal.address, spellData: spellDataInWei, skyOnHat })}
           </StatusText>
         </Flex>
       </Flex>

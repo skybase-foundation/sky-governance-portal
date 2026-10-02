@@ -57,14 +57,13 @@ export const getStatusText = ({
   // not expired, passed, or executed, check support level
   if (!!spellData.skySupport && !!skyOnHat) {
     // If the new proposal has more SKY than the old proposal, but hasn't been lifted, display 0 SKY needed to pass.
-    const skyNeeded =
-      Number(skyOnHat) - Number(spellData.skySupport) > 0
-        ? Number(skyOnHat) - Number(spellData.skySupport)
-        : 0;
+    // Both values are in wei
+    const skySupport = BigInt(spellData.skySupport);
+    const skyNeeded = skyOnHat > skySupport ? skyOnHat - skySupport : 0n;
 
-    return `${formatValue(
-      BigInt(Math.ceil(skyNeeded))
-    )} additional SKY support needed to pass. Expires at ${formatDateWithTime(spellData.expiration)}.`;
+    return `${formatValue(skyNeeded)} additional SKY support needed to pass. Expires at ${formatDateWithTime(
+      spellData.expiration
+    )}.`;
   }
 
   // hasn't been scheduled, executed, hasn't expired, must be active and not passed yet
