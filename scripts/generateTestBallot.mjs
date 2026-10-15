@@ -53,7 +53,7 @@ export async function generateTestBallot(network) {
   return { signature, voter, nonce, expiry, pollIds, optionIds, network };
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const ballot = await generateTestBallot(process.argv[2] || 'mainnet');
   console.log(JSON.stringify(ballot));
 }

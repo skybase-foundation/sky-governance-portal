@@ -35,12 +35,22 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile --ignore-scripts
 
+      # Kept apart from the vote step so that no dependency code runs with the backdoor secret in its env
+      - name: Sign a test ballot
+        id: ballot
+        run: |
+          set -euo pipefail
+          ballot=$(node scripts/generateTestBallot.mjs "$NETWORK")
+          echo "json=$ballot" >> "$GITHUB_OUTPUT"
+
       - name: Cast gasless vote
         env:
+          BALLOT: ${{ steps.ballot.outputs.json }}
           GASLESS_BACKDOOR_SECRET: ${{ secrets.GASLESS_BACKDOOR_SECRET }}
           SIMULATE_FAILURE: ${{ inputs.simulate_failure }}
         run: |
@@ -51,9 +61,7 @@ jobs:
             secret="simulated-failure"
           fi
 
-          ballot=$(node scripts/generateTestBallot.mjs "$NETWORK")
-
-          vote=$(jq -c --arg secret "$secret" '. + {secret: $secret}' <<<"$ballot" |
+          vote=$(jq -c --arg secret "$secret" '. + {secret: $secret}' <<<"$BALLOT" |
             curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' --data @- "$BASE_URL/api/polling/vote") ||
             { echo "$vote"; exit 1; }
           echo "$vote"
