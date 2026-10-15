@@ -25,7 +25,6 @@ type SystemConfig = {
   GASLESS_DISABLED: string;
   USE_MOCK_WALLET: string;
   SUBGRAPH_API_KEY: string;
-  PROXY_ORIGIN: string;
 };
 
 export const config: SystemConfig = {
@@ -47,6 +46,5 @@ export const config: SystemConfig = {
   GASLESS_BACKDOOR_SECRET: process.env.GASLESS_BACKDOOR_SECRET || '',
   GASLESS_DISABLED: process.env.GASLESS_DISABLED || '',
   USE_MOCK_WALLET: process.env.NEXT_PUBLIC_USE_MOCK_WALLET || '',
-  SUBGRAPH_API_KEY: process.env.NEXT_PUBLIC_SUBGRAPH_API_KEY || '',
-  PROXY_ORIGIN: process.env.NEXT_PUBLIC_PROXY_ORIGIN || ''
+  SUBGRAPH_API_KEY: process.env.NEXT_PUBLIC_SUBGRAPH_API_KEY || ''
 };

@@ -80,6 +80,8 @@ The following configuration values can be added to the `.env` file:
 
 - Set `NEXT_PUBLIC_VERCEL_ENV` to `development` to use staging data sources (subgraphs and GitHub repos)
 
+- Set `NEXT_PUBLIC_PROXY_ORIGIN` to the origin of the RPC and indexer proxy, e.g. `https://proxy.sky.money`. It defaults to `https://staging-proxy.sky.money`, and the build fails without it when `NEXT_PUBLIC_VERCEL_ENV` is `production`
+
 #### Optional (DUX-specific config, no performance improvements):
 
 - Set `GASLESS_WEBHOOK_URL` for sending gasless vote requests to discord
