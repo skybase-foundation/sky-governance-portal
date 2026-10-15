@@ -13,7 +13,8 @@ on:
         type: boolean
         default: false
 
-permissions: {}
+permissions:
+  contents: read
 
 concurrency: gasless-synthetic
 
@@ -25,6 +26,19 @@ jobs:
       BASE_URL: https://vote.sky.money
       NETWORK: mainnet
     steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
       - name: Cast gasless vote
         env:
           GASLESS_BACKDOOR_SECRET: ${{ secrets.GASLESS_BACKDOOR_SECRET }}
@@ -37,8 +51,7 @@ jobs:
             secret="simulated-failure"
           fi
 
-          ballot=$(curl -sS --fail-with-body --retry 2 "$BASE_URL/api/generate-test-signature?network=$NETWORK") ||
-            { echo "$ballot"; exit 1; }
+          ballot=$(node scripts/generateTestBallot.mjs "$NETWORK")
 
           vote=$(jq -c --arg secret "$secret" '. + {secret: $secret}' <<<"$ballot" |
             curl -sS --fail-with-body -X POST -H 'Content-Type: application/json' --data @- "$BASE_URL/api/polling/vote") ||
