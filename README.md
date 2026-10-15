@@ -82,8 +82,6 @@ The following configuration values can be added to the `.env` file:
 
 #### Optional (DUX-specific config, no performance improvements):
 
-- Set `MIGRATION_WEBHOOK_URL` for sending migration requests to discord
-
 - Set `GASLESS_WEBHOOK_URL` for sending gasless vote requests to discord
 
 **Required for gasless voting** Set `PRIVY_APP_ID`, `PRIVY_APP_SECRET`, and `PRIVY_WEBHOOK_SIGNING_SECRET` for the Privy server-wallet relayer
