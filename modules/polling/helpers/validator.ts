@@ -13,6 +13,7 @@ import { parsePollMetadata } from './parsePollMetadata';
 import { POLL_VOTE_TYPES_ARRAY } from '../polling.constants';
 import { validatePollParameters } from './validatePollParameters';
 import { getPollTagsMapping } from '../api/getPollTags';
+import { isRawGithubUrl, RAW_GITHUB_ONLY_ERROR } from './parseRawUrl';
 
 type ValidationResult = {
   valid: boolean;
@@ -22,6 +23,7 @@ type ValidationResult = {
 };
 
 export async function validatePollFromRawURL(url: string, poll?: PartialPoll): Promise<ValidationResult> {
+  if (!isRawGithubUrl(url)) return { valid: false, errors: [RAW_GITHUB_ONLY_ERROR] };
   const resp = await fetch(url);
   const text = await resp.text();
   const result = validatePollMarkdown(text);
