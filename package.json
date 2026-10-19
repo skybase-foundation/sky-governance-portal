@@ -17,7 +17,7 @@
     "test": "vitest run",
     "test:ci": "vitest run --coverage",
     "prettier": "prettier --config .prettierrc --write pages/ modules/ lib/",
-    "lint": "eslint 'pages/**/*.{ts,tsx}' 'modules/**/*.{ts,tsx}' 'lib/**/*.{ts,tsx}'",
+    "lint": "eslint 'pages/**/*.{ts,tsx}' 'modules/**/*.{ts,tsx}' 'lib/**/*.{js,ts,tsx}' next.config.js",
     "generate": "wagmi generate",
     "e2e": "playwright test --trace on",
     "e2e:ui": "playwright test --ui"

@@ -8,6 +8,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 const RAW_GITHUB_HOST = 'raw.githubusercontent.com';
 
+// The site's CSP only lets the browser fetch markdown from raw GitHub content (see lib/csp.js)
+export const RAW_GITHUB_ONLY_ERROR = `Only https://${RAW_GITHUB_HOST} URLs are supported`;
+
+export function isRawGithubUrl(rawUrl: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return url.protocol === 'https:' && url.hostname === RAW_GITHUB_HOST;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Turns a raw GitHub content URL into the matching blob page anchored at its
  * review section. Returns '' for anything that is not https raw GitHub

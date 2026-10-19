@@ -16,6 +16,7 @@ import { markdownToHtml } from 'lib/markdown';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { HeadComponent } from 'modules/app/components/layout/Head';
 import EtherscanLink from 'modules/web3/components/EtherscanLink';
+import { isRawGithubUrl, RAW_GITHUB_ONLY_ERROR } from 'modules/polling/helpers/parseRawUrl';
 
 // Regexp to check if is an URL
 const expr =
@@ -52,6 +53,10 @@ const ExecutiveCreate = (): JSX.Element => {
     let metadata, execMarkdown;
     setError([]);
     setFetchFinished(false);
+    if (!isRawGithubUrl(url)) {
+      setError([RAW_GITHUB_ONLY_ERROR]);
+      return;
+    }
     try {
       const rawMd = await (await fetch(url, { cache: 'no-cache' })).text();
       const { data, content } = matterWrapper(rawMd);
