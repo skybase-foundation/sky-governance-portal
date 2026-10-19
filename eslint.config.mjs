@@ -89,6 +89,21 @@ export default [
     },
   },
   {
+    // CommonJS modules loaded by next.config.js
+    files: ['next.config.js', 'lib/csp.js', 'lib/colorModeScript.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: {
+        require: 'readonly',
+        module: 'writable',
+        URL: 'readonly',
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-require-imports': 'off',
+    },
+  },
+  {
     files: ['**/__tests__/**/*.{ts,tsx,js,jsx}', '**/*.{spec,test}.{ts,tsx,js,jsx}'],
     plugins: {
       'testing-library': testingLibraryPlugin,
