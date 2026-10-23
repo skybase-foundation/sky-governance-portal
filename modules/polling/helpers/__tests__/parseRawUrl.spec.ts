@@ -6,7 +6,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-import { parseRawUrl } from '../parseRawUrl';
+import { isRawGithubUrl, parseRawUrl } from '../parseRawUrl';
 
 describe('parseRawUrl', () => {
   it('maps raw GitHub content to the blob page with the review anchor', () => {
@@ -24,5 +24,14 @@ describe('parseRawUrl', () => {
     expect(parseRawUrl('https://raw.githubusercontent.com/org/repo')).toBe('');
     expect(parseRawUrl('not a url')).toBe('');
     expect(parseRawUrl('')).toBe('');
+  });
+});
+
+describe('isRawGithubUrl', () => {
+  it('only accepts https raw GitHub content URLs', () => {
+    expect(isRawGithubUrl('https://raw.githubusercontent.com/sky-ecosystem/polls/main/poll.md')).toBe(true);
+    expect(isRawGithubUrl('http://raw.githubusercontent.com/sky-ecosystem/polls/main/poll.md')).toBe(false);
+    expect(isRawGithubUrl('https://gist.githubusercontent.com/someone/abc/raw/poll.md')).toBe(false);
+    expect(isRawGithubUrl('not a url')).toBe(false);
   });
 });
