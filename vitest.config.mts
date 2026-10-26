@@ -9,6 +9,10 @@ export default defineConfig({
     environment: 'happy-dom',
     testTimeout: 7000,
     setupFiles: ['./__tests__/setup.tsx'],
+    // Vitest 4 dropped `coverage.all`, so list the source folders to keep untested files in the report
+    coverage: {
+      include: ['lib/**/*.{js,ts,tsx}', 'modules/**/*.{ts,tsx}', 'pages/**/*.{ts,tsx}']
+    },
     exclude: [
       ...configDefaults.exclude,
       'node_modules',
