@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - master
+      - main
 
 jobs:
   e2e:
@@ -17,12 +17,17 @@ jobs:
           - test: polling.spec
           - test: wallet.spec
     runs-on: ubuntu-latest
+    # Chromium and its system deps come preinstalled, so the job skips the apt downloads that kept
+    # timing out on the runner's Ubuntu mirror. Keep the tag in sync with @playwright/test.
+    container:
+      image: mcr.microsoft.com/playwright:v1.59.1-noble
+      options: --ipc=host
     env:
       REDIS_URL: ${{ secrets.REDIS_URL }}
       USE_CACHE: true
       TENDERLY_API_KEY: ${{ secrets.TENDERLY_API_KEY }}
       TENDERLY_MAINNET_FORK_VNET_ID: ${{ vars.TENDERLY_MAINNET_FORK_VNET_ID }}
-      DEFENDER_API_SECRET_TESTNET: $${{ secrets.DEFENDER_API_SECRET_TESTNET}}
+      DEFENDER_API_SECRET_TESTNET: ${{ secrets.DEFENDER_API_SECRET_TESTNET}}
       DEFENDER_API_KEY_TESTNET: ${{ secrets.DEFENDER_API_KEY_TESTNET}}
     timeout-minutes: 10
     steps:
@@ -36,9 +41,6 @@ jobs:
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
-
-      # Only the chromium project runs (playwright.config.ts), so skip Firefox/WebKit and their system deps
-      - run: pnpm exec playwright install --with-deps chromium
 
       - name: Run E2E Test
         run: pnpm run e2e ${{ matrix.test }}
