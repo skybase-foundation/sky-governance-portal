@@ -37,7 +37,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - run: pnpm exec playwright install --with-deps
+      # Only the chromium project runs (playwright.config.ts), so skip Firefox/WebKit and their system deps
+      - run: pnpm exec playwright install --with-deps chromium
 
       - name: Run E2E Test
         run: pnpm run e2e ${{ matrix.test }}
