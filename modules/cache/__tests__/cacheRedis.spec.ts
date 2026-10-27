@@ -19,7 +19,10 @@ const client = {
   del: vi.fn(),
   scan: vi.fn()
 };
-const RedisCtor = vi.fn(() => client);
+// `function`, not an arrow: Vitest 4 rejects `new` on arrow-function mocks
+const RedisCtor = vi.fn(function () {
+  return client;
+});
 
 vi.mock('@upstash/redis', () => ({ Redis: RedisCtor }));
 vi.mock('lib/config', () => ({
