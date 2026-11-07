@@ -101,3 +101,48 @@ jobs:
         run: |
           jq -nc --arg content "Gasless vote synthetic check failed: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{content: $content}' |
             curl -sS --fail-with-body -H 'Content-Type: application/json' --data @- "$GASLESS_WEBHOOK_URL"
+
+  # Reads the relayer balance and gasless availability from the public precheck endpoint, so it
+  # needs no relayer credentials and follows the relayer when its address changes.
+  relayer-health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      BASE_URL: https://vote.sky.money
+      NETWORK: mainnet
+      MIN_RELAYER_BALANCE_ETH: ${{ vars.MIN_RELAYER_BALANCE_ETH || '0.01' }}
+    steps:
+      - name: Check relayer balance and gasless availability
+        run: |
+          set -euo pipefail
+
+          precheck=$(curl -sS --fail-with-body --retry 2 \
+            "$BASE_URL/api/polling/precheck?network=$NETWORK&voter=0x0000000000000000000000000000000000000001&pollIds=1") ||
+            { echo "ALERT_DETAIL=precheck request failed" >> "$GITHUB_ENV"; echo "$precheck"; exit 1; }
+          echo "$precheck"
+
+          balance=$(jq -r '.relayBalance' <<<"$precheck")
+          reason=$(jq -r '.gaslessUnavailableReason // empty' <<<"$precheck")
+
+          problems=()
+          if awk -v b="$balance" -v min="$MIN_RELAYER_BALANCE_ETH" 'BEGIN { exit !(b < min) }'; then
+            problems+=("relayer balance is $balance ETH, below $MIN_RELAYER_BALANCE_ETH ETH")
+          fi
+          if [ -n "$reason" ]; then
+            problems+=("gasless voting is unavailable ($reason)")
+          fi
+
+          if [ ${#problems[@]} -gt 0 ]; then
+            detail=$(IFS='; '; echo "${problems[*]}")
+            echo "ALERT_DETAIL=$detail" >> "$GITHUB_ENV"
+            echo "$detail"
+            exit 1
+          fi
+
+      - name: Alert on failure
+        if: failure()
+        env:
+          GASLESS_WEBHOOK_URL: ${{ secrets.GASLESS_WEBHOOK_URL }}
+        run: |
+          jq -nc --arg content "Gasless relayer check failed: ${ALERT_DETAIL:-see run}. $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" '{content: $content}' |
+            curl -sS --fail-with-body -H 'Content-Type: application/json' --data @- "$GASLESS_WEBHOOK_URL"

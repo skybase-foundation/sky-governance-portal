@@ -6,16 +6,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-import { parseGwei, numberToHex, toFunctionSelector } from 'viem';
+import { parseGwei, numberToHex, toFunctionSelector, decodeFunctionData } from 'viem';
 import { config } from 'lib/config';
 import { privySendTransaction } from 'lib/privyRest';
-import { cacheSetNX } from 'modules/cache/cache';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
-import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { getGaslessPublicClient } from 'modules/web3/helpers/getPublicClient';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
-import { pollingArbitrumAddress } from 'modules/contracts/generated';
+import { pollingArbitrumAbi, pollingArbitrumAddress } from 'modules/contracts/generated';
 import { getPrivyWalletConfig } from './relayerCredentials';
+import { alertGasless as alert, isGaslessDisabled } from './gaslessLimits';
+import { claimGaslessSlot, GaslessStoreUnavailableError } from './gaslessStore';
 import logger from 'lib/logger';
 
 const BUMP_MULTIPLIER_NUM = 14n; // 1.4x as 14/10 to keep arithmetic in BigInt
@@ -65,33 +65,20 @@ type StillPendingPayload = {
   };
 };
 
-async function alert(content: string): Promise<void> {
-  if (!config.GASLESS_WEBHOOK_URL) {
-    logger.warn(`[gasless] alert (no webhook configured): ${content}`);
-    return;
-  }
-  try {
-    await postRequestToDiscord({ url: config.GASLESS_WEBHOOK_URL, content, notify: true });
-  } catch (err) {
-    logger.error('[gasless] failed to post Discord alert', (err as Error).message);
-  }
-}
-
 function networkForWalletId(walletId: string): SupportedNetworks {
   if (walletId && walletId === config.PRIVY_WALLET_ID_MAINNET) return SupportedNetworks.MAINNET;
   if (walletId && walletId === config.PRIVY_WALLET_ID_TESTNET) return SupportedNetworks.TENDERLY;
   throw new Error(`Unknown Privy wallet id: ${walletId}`);
 }
 
-async function claimAttemptSlot(
-  transactionId: string,
-  network: SupportedNetworks
-): Promise<number | null> {
+// Keyed by the relayer nonce rather than transaction_id: each replacement gets a new
+// transaction_id, so a per-id budget would reset with every bump.
+async function claimAttemptSlot(lineage: string, network: SupportedNetworks): Promise<number | null> {
   for (let n = 1; n <= MAX_BUMP_ATTEMPTS; n++) {
-    const claimed = await cacheSetNX(
-      `bump-attempt-${transactionId}-${n}`,
-      Date.now().toString(),
+    const claimed = await claimGaslessSlot(
       network,
+      `bump-attempt-${lineage}-${n}`,
+      Date.now().toString(),
       BUMP_ATTEMPT_TTL_MS
     );
     if (claimed) return n;
@@ -99,14 +86,32 @@ async function claimAttemptSlot(
   return null;
 }
 
+// A ballot that can no longer mine (expired, or its nonce already used) would only be resent
+// as a paid revert.
+async function ballotIsStillValid(
+  network: SupportedNetworks,
+  pollingAddress: `0x${string}`,
+  data: `0x${string}`
+): Promise<boolean> {
+  const { args } = decodeFunctionData({ abi: pollingArbitrumAbi, data });
+  const [voter, nonce, expiry] = args as unknown as [`0x${string}`, bigint, bigint];
+  if (expiry <= BigInt(Math.floor(Date.now() / 1000))) return false;
+
+  const client = getGaslessPublicClient(networkNameToChainId(network));
+  const currentNonce = await client.readContract({
+    address: pollingAddress,
+    abi: pollingArbitrumAbi,
+    functionName: 'nonces',
+    args: [voter]
+  });
+  return currentNonce === nonce;
+}
+
 function bump(fee: bigint): bigint {
   return (fee * BUMP_MULTIPLIER_NUM) / BUMP_MULTIPLIER_DEN;
 }
 
-async function isAlreadyMined(
-  network: SupportedNetworks,
-  hash: string | undefined
-): Promise<boolean> {
+async function isAlreadyMined(network: SupportedNetworks, hash: string | undefined): Promise<boolean> {
   if (!hash) return false;
   try {
     const client = getGaslessPublicClient(networkNameToChainId(network));
@@ -121,6 +126,11 @@ async function isAlreadyMined(
 export async function handleStillPending(rawPayload: Record<string, unknown>): Promise<void> {
   const payload = rawPayload as unknown as StillPendingPayload;
   const { transaction_id, transaction_hash, wallet_id, caip2, transaction_request } = payload;
+
+  if (isGaslessDisabled()) {
+    logger.warn(`[gasless] gasless voting is disabled; not bumping tx ${transaction_id}`);
+    return;
+  }
 
   if (
     !transaction_id ||
@@ -177,7 +187,22 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
     return;
   }
 
-  const attempt = await claimAttemptSlot(transaction_id, network);
+  if (!(await ballotIsStillValid(network, expectedTo as `0x${string}`, data))) {
+    logger.warn(`[gasless] ballot for tx ${transaction_id} is expired or its nonce was used; not bumping`);
+    return;
+  }
+
+  let attempt: number | null;
+  try {
+    attempt = await claimAttemptSlot(
+      `${wallet_id}-${configuredChainId}-${transaction_request.nonce}`,
+      network
+    );
+  } catch (err) {
+    if (!(err instanceof GaslessStoreUnavailableError)) throw err;
+    await alert(`Privy bump aborted for tx ${transaction_id}: ${err.message}`);
+    return;
+  }
   if (attempt === null) {
     await alert(
       `Privy bump cap reached for tx ${transaction_id} after ${MAX_BUMP_ATTEMPTS} attempts; investigate.`
@@ -208,9 +233,7 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
   const currentPriority = priorityHex !== undefined && priorityHex !== null ? BigInt(priorityHex) : 0n;
   const currentMaxFee = BigInt(maxFeeHex);
   if (currentMaxFee === 0n) {
-    await alert(
-      `Privy bump aborted for tx ${transaction_id}: max_fee_per_gas is 0, cannot bump.`
-    );
+    await alert(`Privy bump aborted for tx ${transaction_id}: max_fee_per_gas is 0, cannot bump.`);
     return;
   }
 
@@ -234,9 +257,7 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
         value: transaction_request.value,
         nonce: transaction_request.nonce,
         chain_id:
-          transaction_request.chain_id !== undefined
-            ? numberToHex(transaction_request.chain_id)
-            : undefined,
+          transaction_request.chain_id !== undefined ? numberToHex(transaction_request.chain_id) : undefined,
         // Forward the original gas_limit so Privy doesn't re-estimate. In a stuck-tx
         // scenario the original was already gas-validated at submission, and re-estimation
         // can fail under the same network conditions that caused the stall.

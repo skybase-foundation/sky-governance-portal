@@ -9,16 +9,18 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextApiRequest, NextApiResponse } from 'next';
 import withApiHandler from 'modules/app/api/withApiHandler';
 import { getTypedBallotData } from 'modules/web3/helpers/signTypedBallotData';
-import { cacheSet, cacheDel } from 'modules/cache/cache';
-import { GASLESS_RATE_LIMIT_IN_MS } from 'modules/polling/polling.constants';
-import { getRecentlyUsedGaslessVotingKey } from 'modules/cache/constants/cache-keys';
 import { config } from 'lib/config';
 import { privySendTransaction, privyGetWalletAddress } from 'lib/privyRest';
 import { getPrivyWalletConfig } from 'modules/polling/helpers/relayerCredentials';
 import { pollingArbitrumAddress } from 'modules/contracts/generated';
 import logger from 'lib/logger';
 import { getActivePollIds } from 'modules/polling/api/fetchPolls';
-import { checkAndClaimGaslessVotingRateLimit } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
+import {
+  checkAndClaimGaslessVotingRateLimit,
+  releaseGaslessVotingRateLimit
+} from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
+import { claimDailyRelayedVote, isGaslessDisabled } from 'modules/polling/helpers/gaslessLimits';
+import { GaslessStoreUnavailableError } from 'modules/polling/helpers/gaslessStore';
 import { hasSkyRequiredVotingWeight } from 'modules/polling/helpers/hasSkyRequiredVotingWeight';
 import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.constants';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
@@ -53,7 +55,10 @@ export const API_VOTE_ERRORS = {
   VOTER_AND_SIGNER_DIFFER: 'Voter address could not be recovered from signature.',
   LESS_THAN_MINIMUM_SKY_REQUIRED: `Address must have a poll voting weight of at least ${MIN_SKY_REQUIRED_FOR_GASLESS_VOTING.toString()}.`,
   ALREADY_VOTED_IN_POLL: 'Address has already voted in this poll.',
-  RELAYER_ERROR: 'Relayer transaction creation failed.'
+  RELAYER_ERROR: 'Relayer transaction creation failed.',
+  GASLESS_DISABLED: 'Gasless voting is currently disabled.',
+  GASLESS_UNAVAILABLE: 'Gasless voting is temporarily unavailable.',
+  DAILY_CAP_REACHED: 'Gasless voting has reached its daily limit. Try again after 00:00 UTC.'
 };
 
 async function postErrorInDiscord(error: string, body: unknown, type = 'error') {
@@ -77,7 +82,7 @@ async function postErrorInDiscord(error: string, body: unknown, type = 'error') 
 
 type ErrorArgs = { error: string; body: unknown; code?: number; skipDiscord?: boolean };
 
-async function throwError({ error, body, code = 400, skipDiscord = false }: ErrorArgs) {
+async function throwError({ error, body, code = 400, skipDiscord = false }: ErrorArgs): Promise<never> {
   // Post on discord
   if (!skipDiscord) postErrorInDiscord(error, body);
 
@@ -85,9 +90,29 @@ async function throwError({ error, body, code = 400, skipDiscord = false }: Erro
   throw new ApiError(`Poll Gasless Vote: ${error}`, code, error);
 }
 
+// Runs a rate-limit or cap operation, turning a store outage into a 503 so no vote is relayed unchecked.
+async function withGaslessStore<T>(operation: () => Promise<T>, body: unknown): Promise<T> {
+  try {
+    return await operation();
+  } catch (err) {
+    if (!(err instanceof GaslessStoreUnavailableError)) throw err;
+    logger.error(`API Vote: ${err.message}`);
+    return throwError({ error: API_VOTE_ERRORS.GASLESS_UNAVAILABLE, body, code: 503, skipDiscord: true });
+  }
+}
+
 //TODO: add swagger documentation
 export default withApiHandler(
   async (req: NextApiRequest, res: NextApiResponse) => {
+    if (isGaslessDisabled()) {
+      await throwError({
+        error: API_VOTE_ERRORS.GASLESS_DISABLED,
+        body: req.body,
+        code: 503,
+        skipDiscord: true
+      });
+    }
+
     const { voter, pollIds, optionIds, nonce, expiry, signature, network, secret, skipDiscord } = req.body;
     if (typeof voter !== 'string' || !voter) {
       await throwError({ error: API_VOTE_ERRORS.VOTER_MUST_BE_STRING, body: req.body, skipDiscord });
@@ -189,11 +214,17 @@ export default withApiHandler(
       await throwError({ error: API_VOTE_ERRORS.VOTER_AND_SIGNER_DIFFER, body: req.body, skipDiscord });
     }
 
-    const cacheKey = getRecentlyUsedGaslessVotingKey(voter);
+    const releaseRateLimit = () =>
+      releaseGaslessVotingRateLimit(voter, network).catch(err =>
+        logger.error('API Vote: unable to release the gasless rate limit', err.message)
+      );
 
     //run eligibility checks unless backdoor secret provided
     if (!secret || secret !== config.GASLESS_BACKDOOR_SECRET) {
-      const recentlyUsedGaslessVoting = await checkAndClaimGaslessVotingRateLimit(voter, network);
+      const recentlyUsedGaslessVoting = await withGaslessStore(
+        () => checkAndClaimGaslessVotingRateLimit(voter, network),
+        req.body
+      );
 
       //check that address hasn't used gasless service recently before doing any other checks
       if (recentlyUsedGaslessVoting) {
@@ -208,7 +239,7 @@ export default withApiHandler(
 
       //verify address has a poll weight > 0.1 SKY
       if (!hasSkyRequired) {
-        cacheDel(cacheKey, network);
+        releaseRateLimit();
         await throwError({
           error: API_VOTE_ERRORS.LESS_THAN_MINIMUM_SKY_REQUIRED,
           body: req.body,
@@ -219,18 +250,29 @@ export default withApiHandler(
       // Verify that all the polls are active
       const areAllPollsActive = pollIds.every(pollId => activePollIds.some(pId => pId === parseInt(pollId)));
       if (!areAllPollsActive) {
-        cacheDel(cacheKey, network);
+        releaseRateLimit();
         await throwError({ error: API_VOTE_ERRORS.EXPIRED_POLLS, body: req.body, skipDiscord });
       }
 
       //can't use gasless service to vote in a poll you've already voted on
       if (ballotHasVotedPolls) {
-        cacheDel(cacheKey, network);
+        releaseRateLimit();
         await throwError({ error: API_VOTE_ERRORS.ALREADY_VOTED_IN_POLL, body: req.body, skipDiscord });
       }
     } else {
-      cacheSet(cacheKey, JSON.stringify(Date.now()), network, GASLESS_RATE_LIMIT_IN_MS);
+      await withGaslessStore(() => checkAndClaimGaslessVotingRateLimit(voter, network), req.body);
       await postErrorInDiscord('bypassing eligibilty requirements', req.body, 'notice');
+    }
+
+    const withinDailyCap = await withGaslessStore(() => claimDailyRelayedVote(network), req.body);
+    if (!withinDailyCap) {
+      releaseRateLimit();
+      await throwError({
+        error: API_VOTE_ERRORS.DAILY_CAP_REACHED,
+        body: req.body,
+        code: 503,
+        skipDiscord: true
+      });
     }
 
     const { r, s, v } = parseSignature(signature);
@@ -277,7 +319,7 @@ export default withApiHandler(
       };
     } catch (err) {
       //don't rate limit if tx didn't succeed
-      cacheDel(cacheKey, network);
+      releaseRateLimit();
       logger.error('API Vote: relayer send failed', err?.message || err);
       await throwError({ error: API_VOTE_ERRORS.RELAYER_ERROR, body: req.body, skipDiscord });
     }

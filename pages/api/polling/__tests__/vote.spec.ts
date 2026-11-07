@@ -10,10 +10,14 @@ import type { NextApiRequest, NextApiResponse } from 'next';
 import voteAPIHandler, { API_VOTE_ERRORS } from '../vote';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { getSKYVotingWeight } from 'modules/sky/helpers/getSKYVotingWeight';
-import { cacheSet, cacheDel } from 'modules/cache/cache';
 import { getActivePollIds } from 'modules/polling/api/fetchPolls';
 import { parseEther } from 'viem';
-import { checkAndClaimGaslessVotingRateLimit } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
+import {
+  checkAndClaimGaslessVotingRateLimit,
+  releaseGaslessVotingRateLimit
+} from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
+import { claimDailyRelayedVote, isGaslessDisabled } from 'modules/polling/helpers/gaslessLimits';
+import { GaslessStoreUnavailableError } from 'modules/polling/helpers/gaslessStore';
 import { fetchAddressPollVoteHistory } from 'modules/polling/api/fetchAddressPollVoteHistory';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { config } from 'lib/config';
@@ -28,6 +32,7 @@ vi.mock('modules/cache/cache');
 vi.mock('modules/polling/api/fetchPolls');
 vi.mock('modules/web3/helpers/verifyTypedSignature');
 vi.mock('modules/polling/helpers/checkAndClaimGaslessVotingRateLimit');
+vi.mock('modules/polling/helpers/gaslessLimits');
 vi.mock('modules/polling/api/fetchAddressPollVoteHistory');
 vi.mock('modules/app/api/postRequestToDiscord');
 vi.mock('modules/delegates/helpers/getDelegateContractAddress');
@@ -41,8 +46,9 @@ describe('/api/polling/vote API Endpoint', () => {
     (getGaslessPublicClient as Mock).mockReturnValue({
       readContract: publicClientMockResponses
     });
-    (cacheSet as Mock).mockImplementation(() => null);
-    (cacheDel as Mock).mockImplementation(() => null);
+    (releaseGaslessVotingRateLimit as Mock).mockResolvedValue(undefined);
+    (isGaslessDisabled as Mock).mockReturnValue(false);
+    (claimDailyRelayedVote as Mock).mockResolvedValue(true);
     (fetchAddressPollVoteHistory as Mock).mockImplementation(() => Promise.resolve([]));
     (postRequestToDiscord as Mock).mockImplementation(() => Promise.resolve());
     (getDelegateContractAddress as Mock).mockImplementation(() => Promise.resolve(undefined));
@@ -374,5 +380,78 @@ describe('/api/polling/vote API Endpoint', () => {
       usedSecret: true
     });
     config.GASLESS_WEBHOOK_URL = webhookUrl;
+  });
+
+  describe('relayer spending controls', () => {
+    const eligibleBallot = {
+      voter: '0x999999cf1046e68e36E1aA2E0E07105eDDD1f08E',
+      pollIds: [1],
+      optionIds: [1],
+      nonce: 3,
+      expiry: Math.floor(Date.now() / 1000) + 3600,
+      signature: '2',
+      network: SupportedNetworks.MAINNET
+    };
+
+    beforeEach(() => {
+      (verifyTypedSignature as Mock).mockReturnValue(true);
+      (checkAndClaimGaslessVotingRateLimit as Mock).mockResolvedValue(false);
+      (getSKYVotingWeight as Mock).mockResolvedValue(parseEther('2500'));
+      (getActivePollIds as Mock).mockResolvedValue([1]);
+    });
+
+    afterEach(() => {
+      (isGaslessDisabled as Mock).mockReturnValue(false);
+      (claimDailyRelayedVote as Mock).mockResolvedValue(true);
+    });
+
+    it('returns 503 for any request while the kill switch is on', async () => {
+      (isGaslessDisabled as Mock).mockReturnValue(true);
+      (checkAndClaimGaslessVotingRateLimit as Mock).mockClear();
+      const { req, res } = mockRequestResponse('POST', eligibleBallot);
+
+      await voteAPIHandler(req, res);
+
+      expect(res.statusCode).toBe(503);
+      expect(res._getJSONData().error.message).toBe(API_VOTE_ERRORS.GASLESS_DISABLED);
+      expect(checkAndClaimGaslessVotingRateLimit).not.toHaveBeenCalled();
+    });
+
+    it('returns 503 instead of skipping the rate limit when its store is down', async () => {
+      (checkAndClaimGaslessVotingRateLimit as Mock).mockRejectedValue(
+        new GaslessStoreUnavailableError('timeout')
+      );
+      const { req, res } = mockRequestResponse('POST', eligibleBallot);
+
+      await voteAPIHandler(req, res);
+
+      expect(res.statusCode).toBe(503);
+      expect(res._getJSONData().error.message).toBe(API_VOTE_ERRORS.GASLESS_UNAVAILABLE);
+    });
+
+    it('returns 503 and frees the cooldown once the daily cap is used up', async () => {
+      (claimDailyRelayedVote as Mock).mockResolvedValue(false);
+      (releaseGaslessVotingRateLimit as Mock).mockClear();
+      const { req, res } = mockRequestResponse('POST', eligibleBallot);
+
+      await voteAPIHandler(req, res);
+
+      expect(res.statusCode).toBe(503);
+      expect(res._getJSONData().error.message).toBe(API_VOTE_ERRORS.DAILY_CAP_REACHED);
+      expect(releaseGaslessVotingRateLimit).toHaveBeenCalledWith(
+        eligibleBallot.voter,
+        SupportedNetworks.MAINNET
+      );
+    });
+
+    it('returns 503 when the daily counter store is down', async () => {
+      (claimDailyRelayedVote as Mock).mockRejectedValue(new GaslessStoreUnavailableError('timeout'));
+      const { req, res } = mockRequestResponse('POST', eligibleBallot);
+
+      await voteAPIHandler(req, res);
+
+      expect(res.statusCode).toBe(503);
+      expect(res._getJSONData().error.message).toBe(API_VOTE_ERRORS.GASLESS_UNAVAILABLE);
+    });
   });
 });

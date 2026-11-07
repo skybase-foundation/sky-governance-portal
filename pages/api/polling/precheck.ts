@@ -8,15 +8,14 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { NextApiRequest, NextApiResponse } from 'next';
 import withApiHandler from 'modules/app/api/withApiHandler';
-import { getRecentlyUsedGaslessVotingKey } from 'modules/cache/constants/cache-keys';
-import { cacheGet } from 'modules/cache/cache';
 import { DEFAULT_NETWORK, SupportedNetworks } from 'modules/web3/constants/networks';
 import { hasSkyRequiredVotingWeight } from 'modules/polling/helpers/hasSkyRequiredVotingWeight';
 import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.constants';
 import { ballotIncludesAlreadyVoted } from 'modules/polling/helpers/ballotIncludesAlreadyVoted';
 import { getRelayerBalance } from 'modules/polling/api/getRelayerBalance';
 import { ApiError } from 'modules/app/api/ApiError';
-import { config } from 'lib/config';
+import { getRecentGaslessVote } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
+import { getGaslessUnavailableReason } from 'modules/polling/helpers/gaslessLimits';
 import validateQueryParam from 'modules/app/api/validateQueryParam';
 import { validateAddress } from 'modules/web3/api/validateAddress';
 
@@ -47,20 +46,24 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     new ApiError('Gasless precheck: Invalid address', 400, 'Invalid address')
   );
 
-  const cacheKey = getRecentlyUsedGaslessVotingKey(voter);
-
-  const [recentlyUsedGaslessVoting, hasSkyRequired, alreadyVoted, relayBalance] = await Promise.all([
-    cacheGet(cacheKey, network),
+  const [unavailableReason, hasSkyRequired, alreadyVoted, relayBalance] = await Promise.all([
+    getGaslessUnavailableReason(network),
     hasSkyRequiredVotingWeight(voter, network, MIN_SKY_REQUIRED_FOR_GASLESS_VOTING, true),
     ballotIncludesAlreadyVoted(voter, network, pollIdsArray),
     getRelayerBalance(network)
   ]);
+  const recentlyUsedGaslessVoting =
+    unavailableReason === 'store-unavailable'
+      ? null
+      : await getRecentGaslessVote(voter, network).catch(() => null);
 
   return res.status(200).json({
     recentlyUsedGaslessVoting,
     hasSkyRequired,
     alreadyVoted,
     relayBalance,
-    gaslessDisabled: config.GASLESS_DISABLED
+    // The review UI shows its relayer-unavailable state when this is true.
+    gaslessDisabled: unavailableReason !== null,
+    gaslessUnavailableReason: unavailableReason
   });
 });
