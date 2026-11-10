@@ -78,9 +78,9 @@ The following configuration values can be added to the `.env` file:
 
 - Set `GASLESS_DISABLED` to `true` to turn gasless voting off. The vote endpoint rejects every request with a 503, the Privy webhook stops fee bumps, and the review UI shows gasless voting as unavailable
 
-- Gasless voting's spending controls (the per-voter cooldown, the daily vote cap and the fee-bump cap) are stored in Upstash Redis. In production, gasless votes are refused while `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are unset or Redis is unreachable, whatever `USE_CACHE` says
+- Gasless voting's spending controls (the per-voter cooldown, the fee-bump cap and the daily vote count) are stored in Upstash Redis. In production, gasless votes are refused while `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are unset or Redis is unreachable, whatever `USE_CACHE` says
 
-- Set `GASLESS_DAILY_CAP` to the number of gasless votes relayed per UTC day before gasless voting pauses until midnight (default `75`), and `GASLESS_DAILY_ALERT_THRESHOLD` to the daily volume that posts a Discord alert (default `30`)
+- Set `GASLESS_DAILY_ALERT_THRESHOLD` to the number of gasless votes relayed in a UTC day that posts a Discord alert (default `30`)
 
 - Set `NEXT_PUBLIC_VERCEL_ENV` to `development` to use staging data sources (subgraphs and GitHub repos)
 

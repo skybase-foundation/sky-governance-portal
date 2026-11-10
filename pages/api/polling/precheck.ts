@@ -14,8 +14,7 @@ import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.con
 import { ballotIncludesAlreadyVoted } from 'modules/polling/helpers/ballotIncludesAlreadyVoted';
 import { getRelayerBalance } from 'modules/polling/api/getRelayerBalance';
 import { ApiError } from 'modules/app/api/ApiError';
-import { getRecentGaslessVote } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
-import { getGaslessUnavailableReason } from 'modules/polling/helpers/gaslessLimits';
+import { getGaslessStatus } from 'modules/polling/helpers/gaslessLimits';
 import validateQueryParam from 'modules/app/api/validateQueryParam';
 import { validateAddress } from 'modules/web3/api/validateAddress';
 
@@ -46,16 +45,13 @@ export default withApiHandler(async (req: NextApiRequest, res: NextApiResponse) 
     new ApiError('Gasless precheck: Invalid address', 400, 'Invalid address')
   );
 
-  const [unavailableReason, hasSkyRequired, alreadyVoted, relayBalance] = await Promise.all([
-    getGaslessUnavailableReason(network),
-    hasSkyRequiredVotingWeight(voter, network, MIN_SKY_REQUIRED_FOR_GASLESS_VOTING, true),
-    ballotIncludesAlreadyVoted(voter, network, pollIdsArray),
-    getRelayerBalance(network)
-  ]);
-  const recentlyUsedGaslessVoting =
-    unavailableReason === 'store-unavailable'
-      ? null
-      : await getRecentGaslessVote(voter, network).catch(() => null);
+  const [{ unavailableReason, recentlyUsedGaslessVoting }, hasSkyRequired, alreadyVoted, relayBalance] =
+    await Promise.all([
+      getGaslessStatus(voter, network),
+      hasSkyRequiredVotingWeight(voter, network, MIN_SKY_REQUIRED_FOR_GASLESS_VOTING, true),
+      ballotIncludesAlreadyVoted(voter, network, pollIdsArray),
+      getRelayerBalance(network)
+    ]);
 
   return res.status(200).json({
     recentlyUsedGaslessVoting,

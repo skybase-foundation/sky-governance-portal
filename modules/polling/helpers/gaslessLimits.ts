@@ -11,29 +11,19 @@ import logger from 'lib/logger';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { ONE_DAY_IN_MS } from 'modules/app/constants/time';
-import {
-  incrementGaslessCounter,
-  decrementGaslessCounter,
-  readGaslessCounter,
-  GaslessStoreUnavailableError
-} from './gaslessStore';
+import { incrementGaslessCounter, GaslessStoreUnavailableError } from './gaslessStore';
+import { getRecentGaslessVote } from './checkAndClaimGaslessVotingRateLimit';
 
-const DEFAULT_DAILY_CAP = 75;
 const DEFAULT_DAILY_ALERT_THRESHOLD = 30;
 
-export type GaslessUnavailableReason = 'disabled' | 'store-unavailable' | 'daily-cap';
+export type GaslessUnavailableReason = 'disabled' | 'store-unavailable';
 
 export const isGaslessDisabled = (): boolean => config.GASLESS_DISABLED.toLowerCase() === 'true';
 
-function readLimit(value: string, fallback: number): number {
-  const parsed = parseInt(value, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+export function getGaslessDailyAlertThreshold(): number {
+  const parsed = parseInt(config.GASLESS_DAILY_ALERT_THRESHOLD, 10);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_DAILY_ALERT_THRESHOLD;
 }
-
-export const getGaslessDailyCap = (): number => readLimit(config.GASLESS_DAILY_CAP, DEFAULT_DAILY_CAP);
-
-export const getGaslessDailyAlertThreshold = (): number =>
-  readLimit(config.GASLESS_DAILY_ALERT_THRESHOLD, DEFAULT_DAILY_ALERT_THRESHOLD);
 
 const dailyVotesKey = (date = new Date()) => `relayed-votes-${date.toISOString().substring(0, 10)}`;
 
@@ -50,44 +40,33 @@ export async function alertGasless(content: string): Promise<void> {
 }
 
 /**
- * Counts one relayed vote against today's (UTC) cap. Returns false once the cap is used up.
- * Alerts once when daily volume reaches the alert threshold and once when the cap is first hit.
+ * Counts a relayed vote toward today's (UTC) total and alerts once when it reaches the alert threshold.
+ * The vote has already been sent, so a failure here is only logged.
  */
-export async function claimDailyRelayedVote(network: SupportedNetworks): Promise<boolean> {
-  const count = await incrementGaslessCounter(network, dailyVotesKey(), 2 * ONE_DAY_IN_MS);
-  const cap = getGaslessDailyCap();
-  const alertThreshold = getGaslessDailyAlertThreshold();
-
-  if (count === alertThreshold) {
-    await alertGasless(
-      `Gasless voting on ${network} has relayed ${count} votes today (UTC), above the normal daily volume.`
-    );
+export async function countRelayedVote(network: SupportedNetworks): Promise<void> {
+  try {
+    const count = await incrementGaslessCounter(network, dailyVotesKey(), 2 * ONE_DAY_IN_MS);
+    if (count === getGaslessDailyAlertThreshold()) {
+      await alertGasless(
+        `Gasless voting on ${network} has relayed ${count} votes today (UTC), above the normal daily volume.`
+      );
+    }
+  } catch (err) {
+    logger.error('[gasless] unable to count the relayed vote', (err as Error).message);
   }
-  if (count === cap + 1) {
-    await alertGasless(
-      `Gasless voting on ${network} hit its daily cap of ${cap} relayed votes. Gasless votes are blocked until 00:00 UTC.`
-    );
-  }
-  return count <= cap;
 }
 
-/** Returns a claimed vote to today's cap when the relayer never sent it. */
-export const releaseDailyRelayedVote = (network: SupportedNetworks): Promise<void> =>
-  decrementGaslessCounter(network, dailyVotesKey());
-
-/** Whether a gasless vote would be accepted right now, for precheck and the review UI. */
-export async function getGaslessUnavailableReason(
+/** Whether a gasless vote would be accepted right now, and the voter's last gasless vote inside the cooldown. */
+export async function getGaslessStatus(
+  voter: string,
   network: SupportedNetworks
-): Promise<GaslessUnavailableReason | null> {
-  if (isGaslessDisabled()) return 'disabled';
+): Promise<{ unavailableReason: GaslessUnavailableReason | null; recentlyUsedGaslessVoting: string | null }> {
+  if (isGaslessDisabled()) return { unavailableReason: 'disabled', recentlyUsedGaslessVoting: null };
   try {
-    const count = await readGaslessCounter(network, dailyVotesKey());
-    return count >= getGaslessDailyCap() ? 'daily-cap' : null;
+    return { unavailableReason: null, recentlyUsedGaslessVoting: await getRecentGaslessVote(voter, network) };
   } catch (err) {
-    if (err instanceof GaslessStoreUnavailableError) {
-      logger.error(`[gasless] ${err.message}`);
-      return 'store-unavailable';
-    }
-    throw err;
+    if (!(err instanceof GaslessStoreUnavailableError)) throw err;
+    logger.error(`[gasless] ${err.message}`);
+    return { unavailableReason: 'store-unavailable', recentlyUsedGaslessVoting: null };
   }
 }

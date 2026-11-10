@@ -12,8 +12,6 @@ import {
   readGaslessSlot,
   releaseGaslessSlot,
   incrementGaslessCounter,
-  decrementGaslessCounter,
-  readGaslessCounter,
   GaslessStoreUnavailableError,
   __testables
 } from '../gaslessStore';
@@ -56,19 +54,9 @@ describe('gaslessStore without Redis outside production', () => {
     expect(await claimGaslessSlot(network, 'slot', 'v', 1000)).toBe(true);
   });
 
-  it('counts up and reads the counter back', async () => {
-    expect(await readGaslessCounter(network, 'count')).toBe(0);
+  it('counts up', async () => {
     expect(await incrementGaslessCounter(network, 'count', 1000)).toBe(1);
     expect(await incrementGaslessCounter(network, 'count', 1000)).toBe(2);
-    expect(await readGaslessCounter(network, 'count')).toBe(2);
-  });
-
-  it('gives a count back', async () => {
-    await incrementGaslessCounter(network, 'count', 1000);
-    await incrementGaslessCounter(network, 'count', 1000);
-    await decrementGaslessCounter(network, 'count');
-
-    expect(await readGaslessCounter(network, 'count')).toBe(1);
   });
 
   it('keeps keys free of date and version suffixes', () => {
@@ -104,15 +92,6 @@ describe('gaslessStore fails closed', () => {
 });
 
 describe('gaslessStore with Redis', () => {
-  it('gives a count back with DECR', async () => {
-    const decr = vi.fn().mockResolvedValue(4);
-    (getRedis as Mock).mockReturnValue({ decr });
-
-    await decrementGaslessCounter(network, 'count');
-
-    expect(decr).toHaveBeenCalledWith('gasless:mainnet:count');
-  });
-
   it('claims with SET NX and a millisecond TTL', async () => {
     const set = vi.fn().mockResolvedValueOnce('OK').mockResolvedValueOnce(null);
     (getRedis as Mock).mockReturnValue({ set });

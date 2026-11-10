@@ -9,14 +9,12 @@ import { createMocks } from 'node-mocks-http';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import precheckHandler from '../precheck';
-import { getGaslessUnavailableReason } from 'modules/polling/helpers/gaslessLimits';
-import { getRecentGaslessVote } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
+import { getGaslessStatus } from 'modules/polling/helpers/gaslessLimits';
 import { hasSkyRequiredVotingWeight } from 'modules/polling/helpers/hasSkyRequiredVotingWeight';
 import { ballotIncludesAlreadyVoted } from 'modules/polling/helpers/ballotIncludesAlreadyVoted';
 import { getRelayerBalance } from 'modules/polling/api/getRelayerBalance';
 
 vi.mock('modules/polling/helpers/gaslessLimits');
-vi.mock('modules/polling/helpers/checkAndClaimGaslessVotingRateLimit');
 vi.mock('modules/polling/helpers/hasSkyRequiredVotingWeight');
 vi.mock('modules/polling/helpers/ballotIncludesAlreadyVoted');
 vi.mock('modules/polling/api/getRelayerBalance');
@@ -34,8 +32,7 @@ async function precheck() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  (getGaslessUnavailableReason as Mock).mockResolvedValue(null);
-  (getRecentGaslessVote as Mock).mockResolvedValue(null);
+  (getGaslessStatus as Mock).mockResolvedValue({ unavailableReason: null, recentlyUsedGaslessVoting: null });
   (hasSkyRequiredVotingWeight as Mock).mockResolvedValue(true);
   (ballotIncludesAlreadyVoted as Mock).mockResolvedValue(false);
   (getRelayerBalance as Mock).mockResolvedValue('0.5');
@@ -56,10 +53,13 @@ describe('/api/polling/precheck', () => {
     });
   });
 
-  it.each(['disabled', 'daily-cap', 'store-unavailable'])(
+  it.each(['disabled', 'store-unavailable'])(
     'reports gasless voting as disabled when the reason is %s',
     async reason => {
-      (getGaslessUnavailableReason as Mock).mockResolvedValue(reason);
+      (getGaslessStatus as Mock).mockResolvedValue({
+        unavailableReason: reason,
+        recentlyUsedGaslessVoting: null
+      });
 
       const data = (await precheck())._getJSONData();
 
@@ -69,16 +69,12 @@ describe('/api/polling/precheck', () => {
   );
 
   it('returns the last gasless vote time inside the cooldown', async () => {
-    (getRecentGaslessVote as Mock).mockResolvedValue('1794000000000');
+    (getGaslessStatus as Mock).mockResolvedValue({
+      unavailableReason: null,
+      recentlyUsedGaslessVoting: '1794000000000'
+    });
 
     expect((await precheck())._getJSONData().recentlyUsedGaslessVoting).toBe('1794000000000');
-    expect(getRecentGaslessVote).toHaveBeenCalledWith(voter.toLowerCase(), 'mainnet');
-  });
-
-  it('skips the cooldown read when the store is down', async () => {
-    (getGaslessUnavailableReason as Mock).mockResolvedValue('store-unavailable');
-
-    expect((await precheck())._getJSONData().recentlyUsedGaslessVoting).toBeNull();
-    expect(getRecentGaslessVote).not.toHaveBeenCalled();
+    expect(getGaslessStatus).toHaveBeenCalledWith(voter.toLowerCase(), 'mainnet');
   });
 });

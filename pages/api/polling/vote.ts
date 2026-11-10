@@ -19,11 +19,7 @@ import {
   checkAndClaimGaslessVotingRateLimit,
   releaseGaslessVotingRateLimit
 } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
-import {
-  claimDailyRelayedVote,
-  releaseDailyRelayedVote,
-  isGaslessDisabled
-} from 'modules/polling/helpers/gaslessLimits';
+import { countRelayedVote, isGaslessDisabled } from 'modules/polling/helpers/gaslessLimits';
 import { GaslessStoreUnavailableError } from 'modules/polling/helpers/gaslessStore';
 import { hasSkyRequiredVotingWeight } from 'modules/polling/helpers/hasSkyRequiredVotingWeight';
 import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.constants';
@@ -61,8 +57,7 @@ export const API_VOTE_ERRORS = {
   ALREADY_VOTED_IN_POLL: 'Address has already voted in this poll.',
   RELAYER_ERROR: 'Relayer transaction creation failed.',
   GASLESS_DISABLED: 'Gasless voting is currently disabled.',
-  GASLESS_UNAVAILABLE: 'Gasless voting is temporarily unavailable.',
-  DAILY_CAP_REACHED: 'Gasless voting has reached its daily limit. Try again after 00:00 UTC.'
+  GASLESS_UNAVAILABLE: 'Gasless voting is temporarily unavailable.'
 };
 
 async function postErrorInDiscord(error: string, body: unknown, type = 'error') {
@@ -276,17 +271,6 @@ export default withApiHandler(
       await postErrorInDiscord('bypassing eligibilty requirements', req.body, 'notice');
     }
 
-    const withinDailyCap = await withGaslessStore(() => claimDailyRelayedVote(network), req.body);
-    if (!withinDailyCap) {
-      await releaseRateLimit();
-      await throwError({
-        error: API_VOTE_ERRORS.DAILY_CAP_REACHED,
-        body: req.body,
-        code: 503,
-        skipDiscord: true
-      });
-    }
-
     const { r, s, v } = parseSignature(signature);
     let tx;
     try {
@@ -330,15 +314,13 @@ export default withApiHandler(
         status: 'broadcasted'
       };
     } catch (err) {
-      //don't rate limit or count against the daily cap if tx didn't succeed
+      //don't rate limit if tx didn't succeed
       await releaseRateLimit();
-      await releaseDailyRelayedVote(network).catch(e =>
-        logger.error('API Vote: unable to release the daily cap claim', e.message)
-      );
       logger.error('API Vote: relayer send failed', err?.message || err);
       await throwError({ error: API_VOTE_ERRORS.RELAYER_ERROR, body: req.body, skipDiscord });
     }
 
+    await countRelayedVote(network);
     return res.status(200).json(tx);
   },
   { allowPost: true }
