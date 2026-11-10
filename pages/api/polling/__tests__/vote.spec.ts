@@ -16,7 +16,12 @@ import {
   checkAndClaimGaslessVotingRateLimit,
   releaseGaslessVotingRateLimit
 } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
-import { claimDailyRelayedVote, isGaslessDisabled } from 'modules/polling/helpers/gaslessLimits';
+import {
+  claimDailyRelayedVote,
+  releaseDailyRelayedVote,
+  isGaslessDisabled
+} from 'modules/polling/helpers/gaslessLimits';
+import { privyGetWalletAddress } from 'lib/privyRest';
 import { GaslessStoreUnavailableError } from 'modules/polling/helpers/gaslessStore';
 import { fetchAddressPollVoteHistory } from 'modules/polling/api/fetchAddressPollVoteHistory';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
@@ -33,6 +38,7 @@ vi.mock('modules/polling/api/fetchPolls');
 vi.mock('modules/web3/helpers/verifyTypedSignature');
 vi.mock('modules/polling/helpers/checkAndClaimGaslessVotingRateLimit');
 vi.mock('modules/polling/helpers/gaslessLimits');
+vi.mock('lib/privyRest');
 vi.mock('modules/polling/api/fetchAddressPollVoteHistory');
 vi.mock('modules/app/api/postRequestToDiscord');
 vi.mock('modules/delegates/helpers/getDelegateContractAddress');
@@ -49,6 +55,7 @@ describe('/api/polling/vote API Endpoint', () => {
     (releaseGaslessVotingRateLimit as Mock).mockResolvedValue(undefined);
     (isGaslessDisabled as Mock).mockReturnValue(false);
     (claimDailyRelayedVote as Mock).mockResolvedValue(true);
+    (releaseDailyRelayedVote as Mock).mockResolvedValue(undefined);
     (fetchAddressPollVoteHistory as Mock).mockImplementation(() => Promise.resolve([]));
     (postRequestToDiscord as Mock).mockImplementation(() => Promise.resolve());
     (getDelegateContractAddress as Mock).mockImplementation(() => Promise.resolve(undefined));
@@ -442,6 +449,37 @@ describe('/api/polling/vote API Endpoint', () => {
         eligibleBallot.voter,
         SupportedNetworks.MAINNET
       );
+    });
+
+    it('frees the cooldown and the daily cap claim when the relayer send fails', async () => {
+      (privyGetWalletAddress as Mock).mockRejectedValue(new Error('privy down'));
+      (releaseGaslessVotingRateLimit as Mock).mockClear();
+      (releaseDailyRelayedVote as Mock).mockClear();
+      const { req, res } = mockRequestResponse('POST', {
+        ...eligibleBallot,
+        signature: `0x${'11'.repeat(32)}${'22'.repeat(32)}1b`
+      });
+
+      await voteAPIHandler(req, res);
+
+      expect(res._getJSONData().error.message).toBe(API_VOTE_ERRORS.RELAYER_ERROR);
+      expect(releaseGaslessVotingRateLimit).toHaveBeenCalledTimes(1);
+      expect(releaseDailyRelayedVote).toHaveBeenCalledWith(SupportedNetworks.MAINNET);
+    });
+
+    it('keeps a cooldown the backdoor request did not claim', async () => {
+      const originalSecret = config.GASLESS_BACKDOOR_SECRET;
+      config.GASLESS_BACKDOOR_SECRET = 'backdoor';
+      (checkAndClaimGaslessVotingRateLimit as Mock).mockResolvedValue(true);
+      (claimDailyRelayedVote as Mock).mockResolvedValue(false);
+      (releaseGaslessVotingRateLimit as Mock).mockClear();
+      const { req, res } = mockRequestResponse('POST', { ...eligibleBallot, secret: 'backdoor' });
+
+      await voteAPIHandler(req, res);
+      config.GASLESS_BACKDOOR_SECRET = originalSecret;
+
+      expect(res._getJSONData().error.message).toBe(API_VOTE_ERRORS.DAILY_CAP_REACHED);
+      expect(releaseGaslessVotingRateLimit).not.toHaveBeenCalled();
     });
 
     it('returns 503 when the daily counter store is down', async () => {

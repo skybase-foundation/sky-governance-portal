@@ -125,7 +125,9 @@ jobs:
           reason=$(jq -r '.gaslessUnavailableReason // empty' <<<"$precheck")
 
           problems=()
-          if awk -v b="$balance" -v min="$MIN_RELAYER_BALANCE_ETH" 'BEGIN { exit !(b < min) }'; then
+          if ! [[ "$balance" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+            problems+=("precheck returned no relayer balance")
+          elif awk -v b="$balance" -v min="$MIN_RELAYER_BALANCE_ETH" 'BEGIN { exit !(b < min) }'; then
             problems+=("relayer balance is $balance ETH, below $MIN_RELAYER_BALANCE_ETH ETH")
           fi
           if [ -n "$reason" ]; then

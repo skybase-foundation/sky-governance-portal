@@ -112,6 +112,18 @@ export async function incrementGaslessCounter(
   return count;
 }
 
+/** Gives back one count, for a claim that ended up unused. */
+export async function decrementGaslessCounter(network: SupportedNetworks, name: string): Promise<void> {
+  const key = storeKey(network, name);
+  const redis = getStore();
+  if (redis) {
+    await withRedis(() => redis.decr(key));
+    return;
+  }
+  const entry = memoryStore.get(key);
+  if (entry) entry.value = (Number(entry.value) - 1).toString();
+}
+
 export async function readGaslessCounter(network: SupportedNetworks, name: string): Promise<number> {
   const value = await readGaslessSlot(network, name);
   return Number(value ?? 0);

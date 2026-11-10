@@ -396,6 +396,29 @@ describe('__testables.bump', () => {
 
     expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
+    const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
+    expect(content).toMatch(/Relayer nonce 7 stays pending/);
+  });
+
+  it('still bumps when the ballot nonce cannot be read', async () => {
+    readContract.mockRejectedValueOnce(new Error('rpc down'));
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
+
+    await handleStillPending(validPayload);
+
+    expect(privySendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('alerts and does not bump when the vote calldata cannot be decoded', async () => {
+    await handleStillPending({
+      ...validPayload,
+      transaction_request: { ...validPayload.transaction_request, data: VOTE_CALLDATA.slice(0, 20) }
+    });
+
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
+    expect(privySendTransaction).not.toHaveBeenCalled();
+    const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
+    expect(content).toMatch(/could not be decoded/);
   });
 
   it('does not bump a ballot whose nonce has already been used', async () => {

@@ -19,7 +19,11 @@ import {
   checkAndClaimGaslessVotingRateLimit,
   releaseGaslessVotingRateLimit
 } from 'modules/polling/helpers/checkAndClaimGaslessVotingRateLimit';
-import { claimDailyRelayedVote, isGaslessDisabled } from 'modules/polling/helpers/gaslessLimits';
+import {
+  claimDailyRelayedVote,
+  releaseDailyRelayedVote,
+  isGaslessDisabled
+} from 'modules/polling/helpers/gaslessLimits';
 import { GaslessStoreUnavailableError } from 'modules/polling/helpers/gaslessStore';
 import { hasSkyRequiredVotingWeight } from 'modules/polling/helpers/hasSkyRequiredVotingWeight';
 import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.constants';
@@ -214,10 +218,14 @@ export default withApiHandler(
       await throwError({ error: API_VOTE_ERRORS.VOTER_AND_SIGNER_DIFFER, body: req.body, skipDiscord });
     }
 
-    const releaseRateLimit = () =>
-      releaseGaslessVotingRateLimit(voter, network).catch(err =>
+    // The backdoor path can run inside a cooldown another request claimed; only the owner frees it.
+    let claimedRateLimit = true;
+    const releaseRateLimit = async () => {
+      if (!claimedRateLimit) return;
+      await releaseGaslessVotingRateLimit(voter, network).catch(err =>
         logger.error('API Vote: unable to release the gasless rate limit', err.message)
       );
+    };
 
     //run eligibility checks unless backdoor secret provided
     if (!secret || secret !== config.GASLESS_BACKDOOR_SECRET) {
@@ -239,7 +247,7 @@ export default withApiHandler(
 
       //verify address has a poll weight > 0.1 SKY
       if (!hasSkyRequired) {
-        releaseRateLimit();
+        await releaseRateLimit();
         await throwError({
           error: API_VOTE_ERRORS.LESS_THAN_MINIMUM_SKY_REQUIRED,
           body: req.body,
@@ -250,23 +258,27 @@ export default withApiHandler(
       // Verify that all the polls are active
       const areAllPollsActive = pollIds.every(pollId => activePollIds.some(pId => pId === parseInt(pollId)));
       if (!areAllPollsActive) {
-        releaseRateLimit();
+        await releaseRateLimit();
         await throwError({ error: API_VOTE_ERRORS.EXPIRED_POLLS, body: req.body, skipDiscord });
       }
 
       //can't use gasless service to vote in a poll you've already voted on
       if (ballotHasVotedPolls) {
-        releaseRateLimit();
+        await releaseRateLimit();
         await throwError({ error: API_VOTE_ERRORS.ALREADY_VOTED_IN_POLL, body: req.body, skipDiscord });
       }
     } else {
-      await withGaslessStore(() => checkAndClaimGaslessVotingRateLimit(voter, network), req.body);
+      const alreadyClaimed = await withGaslessStore(
+        () => checkAndClaimGaslessVotingRateLimit(voter, network),
+        req.body
+      );
+      claimedRateLimit = !alreadyClaimed;
       await postErrorInDiscord('bypassing eligibilty requirements', req.body, 'notice');
     }
 
     const withinDailyCap = await withGaslessStore(() => claimDailyRelayedVote(network), req.body);
     if (!withinDailyCap) {
-      releaseRateLimit();
+      await releaseRateLimit();
       await throwError({
         error: API_VOTE_ERRORS.DAILY_CAP_REACHED,
         body: req.body,
@@ -318,8 +330,11 @@ export default withApiHandler(
         status: 'broadcasted'
       };
     } catch (err) {
-      //don't rate limit if tx didn't succeed
-      releaseRateLimit();
+      //don't rate limit or count against the daily cap if tx didn't succeed
+      await releaseRateLimit();
+      await releaseDailyRelayedVote(network).catch(e =>
+        logger.error('API Vote: unable to release the daily cap claim', e.message)
+      );
       logger.error('API Vote: relayer send failed', err?.message || err);
       await throwError({ error: API_VOTE_ERRORS.RELAYER_ERROR, body: req.body, skipDiscord });
     }

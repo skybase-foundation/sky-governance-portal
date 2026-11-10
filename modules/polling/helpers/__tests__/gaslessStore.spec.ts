@@ -12,6 +12,7 @@ import {
   readGaslessSlot,
   releaseGaslessSlot,
   incrementGaslessCounter,
+  decrementGaslessCounter,
   readGaslessCounter,
   GaslessStoreUnavailableError,
   __testables
@@ -62,6 +63,14 @@ describe('gaslessStore without Redis outside production', () => {
     expect(await readGaslessCounter(network, 'count')).toBe(2);
   });
 
+  it('gives a count back', async () => {
+    await incrementGaslessCounter(network, 'count', 1000);
+    await incrementGaslessCounter(network, 'count', 1000);
+    await decrementGaslessCounter(network, 'count');
+
+    expect(await readGaslessCounter(network, 'count')).toBe(1);
+  });
+
   it('keeps keys free of date and version suffixes', () => {
     expect(__testables.storeKey(network, 'recently-used-gasless-voting-0xabc')).toBe(
       'gasless:mainnet:recently-used-gasless-voting-0xabc'
@@ -95,6 +104,15 @@ describe('gaslessStore fails closed', () => {
 });
 
 describe('gaslessStore with Redis', () => {
+  it('gives a count back with DECR', async () => {
+    const decr = vi.fn().mockResolvedValue(4);
+    (getRedis as Mock).mockReturnValue({ decr });
+
+    await decrementGaslessCounter(network, 'count');
+
+    expect(decr).toHaveBeenCalledWith('gasless:mainnet:count');
+  });
+
   it('claims with SET NX and a millisecond TTL', async () => {
     const set = vi.fn().mockResolvedValueOnce('OK').mockResolvedValueOnce(null);
     (getRedis as Mock).mockReturnValue({ set });

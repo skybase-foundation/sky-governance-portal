@@ -11,7 +11,12 @@ import logger from 'lib/logger';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { ONE_DAY_IN_MS } from 'modules/app/constants/time';
-import { incrementGaslessCounter, readGaslessCounter, GaslessStoreUnavailableError } from './gaslessStore';
+import {
+  incrementGaslessCounter,
+  decrementGaslessCounter,
+  readGaslessCounter,
+  GaslessStoreUnavailableError
+} from './gaslessStore';
 
 const DEFAULT_DAILY_CAP = 75;
 const DEFAULT_DAILY_ALERT_THRESHOLD = 30;
@@ -65,6 +70,10 @@ export async function claimDailyRelayedVote(network: SupportedNetworks): Promise
   }
   return count <= cap;
 }
+
+/** Returns a claimed vote to today's cap when the relayer never sent it. */
+export const releaseDailyRelayedVote = (network: SupportedNetworks): Promise<void> =>
+  decrementGaslessCounter(network, dailyVotesKey());
 
 /** Whether a gasless vote would be accepted right now, for precheck and the review UI. */
 export async function getGaslessUnavailableReason(

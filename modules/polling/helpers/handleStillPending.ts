@@ -97,14 +97,20 @@ async function ballotIsStillValid(
   const [voter, nonce, expiry] = args as unknown as [`0x${string}`, bigint, bigint];
   if (expiry <= BigInt(Math.floor(Date.now() / 1000))) return false;
 
-  const client = getGaslessPublicClient(networkNameToChainId(network));
-  const currentNonce = await client.readContract({
-    address: pollingAddress,
-    abi: pollingArbitrumAbi,
-    functionName: 'nonces',
-    args: [voter]
-  });
-  return currentNonce === nonce;
+  try {
+    const client = getGaslessPublicClient(networkNameToChainId(network));
+    const currentNonce = await client.readContract({
+      address: pollingAddress,
+      abi: pollingArbitrumAbi,
+      functionName: 'nonces',
+      args: [voter]
+    });
+    return currentNonce === nonce;
+  } catch (err) {
+    // Same as isAlreadyMined: an RPC failure must not block the bump that unsticks the relayer.
+    logger.warn('[gasless] could not read the ballot nonce; bumping anyway', (err as Error).message);
+    return true;
+  }
 }
 
 function bump(fee: bigint): bigint {
@@ -187,8 +193,17 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
     return;
   }
 
-  if (!(await ballotIsStillValid(network, expectedTo as `0x${string}`, data))) {
-    logger.warn(`[gasless] ballot for tx ${transaction_id} is expired or its nonce was used; not bumping`);
+  let ballotValid: boolean;
+  try {
+    ballotValid = await ballotIsStillValid(network, expectedTo as `0x${string}`, data);
+  } catch {
+    await alert(`Privy bump aborted for tx ${transaction_id}: vote calldata could not be decoded.`);
+    return;
+  }
+  if (!ballotValid) {
+    await alert(
+      `Privy bump skipped for tx ${transaction_id}: its ballot expired or its nonce was already used. Relayer nonce ${transaction_request.nonce} stays pending until the tx is dropped or replaced; investigate.`
+    );
     return;
   }
 
