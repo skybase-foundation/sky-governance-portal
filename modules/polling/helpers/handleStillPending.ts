@@ -6,13 +6,13 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 
 */
 
-import { parseGwei, numberToHex, toFunctionSelector, decodeFunctionData } from 'viem';
+import { parseGwei, numberToHex, toFunctionSelector } from 'viem';
 import { config } from 'lib/config';
 import { privySendTransaction } from 'lib/privyRest';
 import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { getGaslessPublicClient } from 'modules/web3/helpers/getPublicClient';
 import { networkNameToChainId } from 'modules/web3/helpers/chain';
-import { pollingArbitrumAbi, pollingArbitrumAddress } from 'modules/contracts/generated';
+import { pollingArbitrumAddress } from 'modules/contracts/generated';
 import { getPrivyWalletConfig } from './relayerCredentials';
 import { alertGasless as alert, isGaslessDisabled } from './gaslessLimits';
 import { claimGaslessSlot, GaslessStoreUnavailableError } from './gaslessStore';
@@ -84,33 +84,6 @@ async function claimAttemptSlot(lineage: string, network: SupportedNetworks): Pr
     if (claimed) return n;
   }
   return null;
-}
-
-// A ballot that can no longer mine (expired, or its nonce already used) would only be resent
-// as a paid revert.
-async function ballotIsStillValid(
-  network: SupportedNetworks,
-  pollingAddress: `0x${string}`,
-  data: `0x${string}`
-): Promise<boolean> {
-  const { args } = decodeFunctionData({ abi: pollingArbitrumAbi, data });
-  const [voter, nonce, expiry] = args as unknown as [`0x${string}`, bigint, bigint];
-  if (expiry <= BigInt(Math.floor(Date.now() / 1000))) return false;
-
-  try {
-    const client = getGaslessPublicClient(networkNameToChainId(network));
-    const currentNonce = await client.readContract({
-      address: pollingAddress,
-      abi: pollingArbitrumAbi,
-      functionName: 'nonces',
-      args: [voter]
-    });
-    return currentNonce === nonce;
-  } catch (err) {
-    // Same as isAlreadyMined: an RPC failure must not block the bump that unsticks the relayer.
-    logger.warn('[gasless] could not read the ballot nonce; bumping anyway', (err as Error).message);
-    return true;
-  }
 }
 
 function bump(fee: bigint): bigint {
@@ -189,20 +162,6 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
   ) {
     await alert(
       `Privy bump aborted for tx ${transaction_id}: chain_id=${transaction_request.chain_id} does not match configured ${configuredChainId} for wallet ${wallet_id}.`
-    );
-    return;
-  }
-
-  let ballotValid: boolean;
-  try {
-    ballotValid = await ballotIsStillValid(network, expectedTo as `0x${string}`, data);
-  } catch {
-    await alert(`Privy bump aborted for tx ${transaction_id}: vote calldata could not be decoded.`);
-    return;
-  }
-  if (!ballotValid) {
-    await alert(
-      `Privy bump skipped for tx ${transaction_id}: its ballot expired or its nonce was already used. Relayer nonce ${transaction_request.nonce} stays pending until the tx is dropped or replaced; investigate.`
     );
     return;
   }

@@ -34,7 +34,6 @@ vi.mock('lib/config', () => ({
 }));
 
 const getTransactionReceipt = vi.fn();
-const readContract = vi.fn();
 const BALLOT_NONCE = 3n;
 
 beforeEach(() => {
@@ -44,10 +43,8 @@ beforeEach(() => {
     transaction_id: 'tx-bumped',
     caip2: 'eip155:42161'
   });
-  (getGaslessPublicClient as Mock).mockReturnValue({ getTransactionReceipt, readContract });
+  (getGaslessPublicClient as Mock).mockReturnValue({ getTransactionReceipt });
   config.GASLESS_DISABLED = '';
-  // Default: the ballot nonce hasn't been used yet
-  readContract.mockResolvedValue(BALLOT_NONCE);
   // Default: not yet mined
   getTransactionReceipt.mockRejectedValue(new Error('not found'));
 });
@@ -385,7 +382,9 @@ describe('__testables.bump', () => {
     expect(keys[1]).toBe('bump-attempt-wallet-mainnet-42161-7-1');
   });
 
-  it('does not bump a ballot that has expired', async () => {
+  it('still bumps an expired ballot so the relayer nonce clears', async () => {
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
+
     await handleStillPending({
       ...validPayload,
       transaction_request: {
@@ -394,46 +393,7 @@ describe('__testables.bump', () => {
       }
     });
 
-    expect(claimGaslessSlot).not.toHaveBeenCalled();
-    expect(privySendTransaction).not.toHaveBeenCalled();
-    const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
-    expect(content).toMatch(/Relayer nonce 7 stays pending/);
-  });
-
-  it('still bumps when the ballot nonce cannot be read', async () => {
-    readContract.mockRejectedValueOnce(new Error('rpc down'));
-    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
-
-    await handleStillPending(validPayload);
-
     expect(privySendTransaction).toHaveBeenCalledTimes(1);
-  });
-
-  it('alerts and does not bump when the vote calldata cannot be decoded', async () => {
-    await handleStillPending({
-      ...validPayload,
-      transaction_request: { ...validPayload.transaction_request, data: VOTE_CALLDATA.slice(0, 20) }
-    });
-
-    expect(claimGaslessSlot).not.toHaveBeenCalled();
-    expect(privySendTransaction).not.toHaveBeenCalled();
-    const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
-    expect(content).toMatch(/could not be decoded/);
-  });
-
-  it('does not bump a ballot whose nonce has already been used', async () => {
-    readContract.mockResolvedValueOnce(BALLOT_NONCE + 1n);
-
-    await handleStillPending(validPayload);
-
-    expect(readContract).toHaveBeenCalledWith(
-      expect.objectContaining({
-        functionName: 'nonces',
-        args: ['0x999999cf1046e68e36E1aA2E0E07105eDDD1f08E']
-      })
-    );
-    expect(claimGaslessSlot).not.toHaveBeenCalled();
-    expect(privySendTransaction).not.toHaveBeenCalled();
   });
 
   it('alerts and does not bump when the attempt store is unavailable', async () => {
