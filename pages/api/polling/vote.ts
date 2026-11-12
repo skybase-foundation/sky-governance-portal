@@ -236,7 +236,10 @@ export default withApiHandler(
         hasSkyRequiredVotingWeight(voter, network, MIN_SKY_REQUIRED_FOR_GASLESS_VOTING, true),
         getActivePollIds(network),
         ballotIncludesAlreadyVoted(voter, network, pollIds)
-      ]);
+      ]).catch(async err => {
+        await releaseRateLimit();
+        throw err;
+      });
 
       //verify address has a poll weight > 0.1 SKY
       if (!hasSkyRequired) {

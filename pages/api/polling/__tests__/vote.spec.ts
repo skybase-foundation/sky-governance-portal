@@ -468,6 +468,19 @@ describe('/api/polling/vote API Endpoint', () => {
       expect(countRelayedVote).not.toHaveBeenCalled();
     });
 
+    it('frees the cooldown when an eligibility check throws', async () => {
+      (getActivePollIds as Mock).mockRejectedValue(new Error('subgraph down'));
+      (releaseGaslessVotingRateLimit as Mock).mockClear();
+      (privySendTransaction as Mock).mockClear();
+      const { req, res } = mockRequestResponse('POST', { ...eligibleBallot, signature: validSignature });
+
+      await voteAPIHandler(req, res);
+
+      expect(res.statusCode).toBe(500);
+      expect(releaseGaslessVotingRateLimit).toHaveBeenCalledTimes(1);
+      expect(privySendTransaction).not.toHaveBeenCalled();
+    });
+
     it('keeps a cooldown the backdoor request did not claim', async () => {
       const originalSecret = config.GASLESS_BACKDOOR_SECRET;
       config.GASLESS_BACKDOOR_SECRET = 'backdoor';
