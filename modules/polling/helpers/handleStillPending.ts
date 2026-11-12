@@ -73,7 +73,10 @@ function networkForWalletId(walletId: string): SupportedNetworks {
 
 // Keyed by the relayer nonce rather than transaction_id: each replacement gets a new
 // transaction_id, so a per-id budget would reset with every bump.
-async function claimAttemptSlot(lineage: string, network: SupportedNetworks): Promise<number | null> {
+async function claimAttemptSlot(
+  lineage: string,
+  network: SupportedNetworks
+): Promise<number | null> {
   for (let n = 1; n <= MAX_BUMP_ATTEMPTS; n++) {
     const claimed = await claimGaslessSlot(
       network,
@@ -90,7 +93,10 @@ function bump(fee: bigint): bigint {
   return (fee * BUMP_MULTIPLIER_NUM) / BUMP_MULTIPLIER_DEN;
 }
 
-async function isAlreadyMined(network: SupportedNetworks, hash: string | undefined): Promise<boolean> {
+async function isAlreadyMined(
+  network: SupportedNetworks,
+  hash: string | undefined
+): Promise<boolean> {
   if (!hash) return false;
   try {
     const client = getGaslessPublicClient(networkNameToChainId(network));
@@ -207,7 +213,9 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
   const currentPriority = priorityHex !== undefined && priorityHex !== null ? BigInt(priorityHex) : 0n;
   const currentMaxFee = BigInt(maxFeeHex);
   if (currentMaxFee === 0n) {
-    await alert(`Privy bump aborted for tx ${transaction_id}: max_fee_per_gas is 0, cannot bump.`);
+    await alert(
+      `Privy bump aborted for tx ${transaction_id}: max_fee_per_gas is 0, cannot bump.`
+    );
     return;
   }
 
@@ -231,7 +239,9 @@ export async function handleStillPending(rawPayload: Record<string, unknown>): P
         value: transaction_request.value,
         nonce: transaction_request.nonce,
         chain_id:
-          transaction_request.chain_id !== undefined ? numberToHex(transaction_request.chain_id) : undefined,
+          transaction_request.chain_id !== undefined
+            ? numberToHex(transaction_request.chain_id)
+            : undefined,
         // Forward the original gas_limit so Privy doesn't re-estimate. In a stuck-tx
         // scenario the original was already gas-validated at submission, and re-estimation
         // can fail under the same network conditions that caused the stall.

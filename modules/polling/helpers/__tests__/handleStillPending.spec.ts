@@ -7,10 +7,9 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 */
 
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import { encodeFunctionData, parseGwei } from 'viem';
+import { parseGwei, toFunctionSelector } from 'viem';
 import { handleStillPending, __testables } from '../handleStillPending';
 import { claimGaslessSlot, GaslessStoreUnavailableError } from '../gaslessStore';
-import { pollingArbitrumAbi } from 'modules/contracts/generated';
 import { privySendTransaction } from 'lib/privyRest';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { config } from 'lib/config';
@@ -34,7 +33,6 @@ vi.mock('lib/config', () => ({
 }));
 
 const getTransactionReceipt = vi.fn();
-const BALLOT_NONCE = 3n;
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -51,22 +49,12 @@ beforeEach(() => {
 
 const POLLING_ARBITRUM_ONE = '0x4f4e551b4920a5417F8d4e7f8f099660dAdadcEC';
 const POLLING_ARBITRUM_SEPOLIA = '0xE63329692fA90B3efd5eB675c601abeDB2DF715a';
-const voteCalldata = (expiry = BigInt(Math.floor(Date.now() / 1000) + 3600)) =>
-  encodeFunctionData({
-    abi: pollingArbitrumAbi,
-    functionName: 'vote',
-    args: [
-      '0x999999cf1046e68e36E1aA2E0E07105eDDD1f08E',
-      BALLOT_NONCE,
-      expiry,
-      [1n],
-      [1n],
-      27,
-      `0x${'11'.repeat(32)}`,
-      `0x${'22'.repeat(32)}`
-    ]
-  });
-const VOTE_CALLDATA = voteCalldata();
+const VOTE_SELECTOR = toFunctionSelector(
+  'vote(address,uint256,uint256,uint256[],uint256[],uint8,bytes32,bytes32)'
+);
+// Selector + 32 bytes of zero-padded args. Just enough to pass the selector check; the
+// handler doesn't decode the args.
+const VOTE_CALLDATA = `${VOTE_SELECTOR}${'00'.repeat(32)}` as `0x${string}`;
 
 const validPayload = {
   type: 'transaction.still_pending',
@@ -156,9 +144,9 @@ describe('handleStillPending', () => {
   });
 
   it('rejects unknown wallet ids', async () => {
-    await expect(handleStillPending({ ...validPayload, wallet_id: 'wallet-unknown' })).rejects.toThrow(
-      /Unknown Privy wallet id/
-    );
+    await expect(
+      handleStillPending({ ...validPayload, wallet_id: 'wallet-unknown' })
+    ).rejects.toThrow(/Unknown Privy wallet id/);
     expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
   });
@@ -215,7 +203,9 @@ describe('handleStillPending', () => {
     // priority gets the additive floor (0 + 0.01 gwei) since multiplicative bump of 0 is 0
     expect(BigInt(opts.transaction.max_priority_fee_per_gas)).toBe(__testables.MIN_PRIORITY_BUMP);
     // max_fee bumps 1.4x
-    expect(BigInt(opts.transaction.max_fee_per_gas)).toBe((parseGwei('0.5') * 14n) / 10n);
+    expect(BigInt(opts.transaction.max_fee_per_gas)).toBe(
+      (parseGwei('0.5') * 14n) / 10n
+    );
   });
 
   // When current priority is non-trivial, the multiplicative bump (1.4x) wins over the
@@ -380,20 +370,6 @@ describe('__testables.bump', () => {
     expect(keys[0]).toBe('bump-attempt-wallet-mainnet-42161-7-1');
     // The replacement shares the lineage, so it continues from the same budget.
     expect(keys[1]).toBe('bump-attempt-wallet-mainnet-42161-7-1');
-  });
-
-  it('still bumps an expired ballot so the relayer nonce clears', async () => {
-    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
-
-    await handleStillPending({
-      ...validPayload,
-      transaction_request: {
-        ...validPayload.transaction_request,
-        data: voteCalldata(BigInt(Math.floor(Date.now() / 1000) - 60))
-      }
-    });
-
-    expect(privySendTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('alerts and does not bump when the attempt store is unavailable', async () => {

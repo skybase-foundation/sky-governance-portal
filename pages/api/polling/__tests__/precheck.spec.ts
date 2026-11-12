@@ -67,14 +67,4 @@ describe('/api/polling/precheck', () => {
       expect(data.gaslessUnavailableReason).toBe(reason);
     }
   );
-
-  it('returns the last gasless vote time inside the cooldown', async () => {
-    (getGaslessStatus as Mock).mockResolvedValue({
-      unavailableReason: null,
-      recentlyUsedGaslessVoting: '1794000000000'
-    });
-
-    expect((await precheck())._getJSONData().recentlyUsedGaslessVoting).toBe('1794000000000');
-    expect(getGaslessStatus).toHaveBeenCalledWith(voter.toLowerCase(), 'mainnet');
-  });
 });

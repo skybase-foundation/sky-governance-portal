@@ -26,6 +26,7 @@ import { MIN_SKY_REQUIRED_FOR_GASLESS_VOTING } from 'modules/polling/polling.con
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { sanitizeGaslessVoteBody } from 'modules/polling/helpers/sanitizeGaslessVoteBody';
 import { isSupportedNetwork } from 'modules/web3/helpers/networks';
+import { SupportedNetworks } from 'modules/web3/constants/networks';
 import { ballotIncludesAlreadyVoted } from 'modules/polling/helpers/ballotIncludesAlreadyVoted';
 import { ApiError } from 'modules/app/api/ApiError';
 import { verifyTypedSignature } from 'modules/web3/helpers/verifyTypedSignature';
@@ -89,10 +90,10 @@ async function throwError({ error, body, code = 400, skipDiscord = false }: Erro
   throw new ApiError(`Poll Gasless Vote: ${error}`, code, error);
 }
 
-// Runs a rate-limit or cap operation, turning a store outage into a 503 so no vote is relayed unchecked.
-async function withGaslessStore<T>(operation: () => Promise<T>, body: unknown): Promise<T> {
+// Claims the voter's cooldown. A store outage becomes a 503 so no vote is relayed unchecked.
+async function claimCooldown(voter: string, network: SupportedNetworks, body: unknown): Promise<boolean> {
   try {
-    return await operation();
+    return await checkAndClaimGaslessVotingRateLimit(voter, network);
   } catch (err) {
     if (!(err instanceof GaslessStoreUnavailableError)) throw err;
     logger.error(`API Vote: ${err.message}`);
@@ -224,10 +225,7 @@ export default withApiHandler(
 
     //run eligibility checks unless backdoor secret provided
     if (!secret || secret !== config.GASLESS_BACKDOOR_SECRET) {
-      const recentlyUsedGaslessVoting = await withGaslessStore(
-        () => checkAndClaimGaslessVotingRateLimit(voter, network),
-        req.body
-      );
+      const recentlyUsedGaslessVoting = await claimCooldown(voter, network, req.body);
 
       //check that address hasn't used gasless service recently before doing any other checks
       if (recentlyUsedGaslessVoting) {
@@ -263,10 +261,7 @@ export default withApiHandler(
         await throwError({ error: API_VOTE_ERRORS.ALREADY_VOTED_IN_POLL, body: req.body, skipDiscord });
       }
     } else {
-      const alreadyClaimed = await withGaslessStore(
-        () => checkAndClaimGaslessVotingRateLimit(voter, network),
-        req.body
-      );
+      const alreadyClaimed = await claimCooldown(voter, network, req.body);
       claimedRateLimit = !alreadyClaimed;
       await postErrorInDiscord('bypassing eligibilty requirements', req.body, 'notice');
     }
