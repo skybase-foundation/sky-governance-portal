@@ -110,7 +110,7 @@ jobs:
     env:
       BASE_URL: https://vote.sky.money
       NETWORK: mainnet
-      MIN_RELAYER_BALANCE_ETH: ${{ vars.MIN_RELAYER_BALANCE_ETH || '0.01' }}
+      MIN_RELAYER_BALANCE_ETH: '0.01'
     steps:
       - name: Check relayer balance and gasless availability
         run: |

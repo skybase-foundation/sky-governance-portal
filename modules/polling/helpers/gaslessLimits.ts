@@ -14,16 +14,11 @@ import { ONE_DAY_IN_MS } from 'modules/app/constants/time';
 import { incrementGaslessCounter, GaslessStoreUnavailableError } from './gaslessStore';
 import { getRecentGaslessVote } from './checkAndClaimGaslessVotingRateLimit';
 
-const DEFAULT_DAILY_ALERT_THRESHOLD = 30;
+const DAILY_ALERT_THRESHOLD = 30;
 
 export type GaslessUnavailableReason = 'disabled' | 'store-unavailable';
 
 export const isGaslessDisabled = (): boolean => config.GASLESS_DISABLED.toLowerCase() === 'true';
-
-export function getGaslessDailyAlertThreshold(): number {
-  const parsed = parseInt(config.GASLESS_DAILY_ALERT_THRESHOLD, 10);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : DEFAULT_DAILY_ALERT_THRESHOLD;
-}
 
 const dailyVotesKey = (date = new Date()) => `relayed-votes-${date.toISOString().substring(0, 10)}`;
 
@@ -46,7 +41,7 @@ export async function alertGasless(content: string): Promise<void> {
 export async function countRelayedVote(network: SupportedNetworks): Promise<void> {
   try {
     const count = await incrementGaslessCounter(network, dailyVotesKey(), 2 * ONE_DAY_IN_MS);
-    if (count === getGaslessDailyAlertThreshold()) {
+    if (count === DAILY_ALERT_THRESHOLD) {
       await alertGasless(
         `Gasless voting on ${network} has relayed ${count} votes today (UTC), above the normal daily volume.`
       );

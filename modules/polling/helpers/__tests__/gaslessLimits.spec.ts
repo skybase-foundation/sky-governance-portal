@@ -7,12 +7,7 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 */
 
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
-import {
-  countRelayedVote,
-  getGaslessDailyAlertThreshold,
-  getGaslessStatus,
-  isGaslessDisabled
-} from '../gaslessLimits';
+import { countRelayedVote, getGaslessStatus, isGaslessDisabled } from '../gaslessLimits';
 import { incrementGaslessCounter, GaslessStoreUnavailableError } from '../gaslessStore';
 import { getRecentGaslessVote } from '../checkAndClaimGaslessVotingRateLimit';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
@@ -32,7 +27,6 @@ const voter = '0xabc';
 beforeEach(() => {
   vi.clearAllMocks();
   config.GASLESS_DISABLED = '';
-  config.GASLESS_DAILY_ALERT_THRESHOLD = '';
   config.GASLESS_WEBHOOK_URL = 'https://discord.example/hook';
 });
 
@@ -47,14 +41,6 @@ describe('isGaslessDisabled', () => {
 });
 
 describe('countRelayedVote', () => {
-  it('defaults the alert threshold to 30 and accepts an override', () => {
-    expect(getGaslessDailyAlertThreshold()).toBe(30);
-    config.GASLESS_DAILY_ALERT_THRESHOLD = '10';
-    expect(getGaslessDailyAlertThreshold()).toBe(10);
-    config.GASLESS_DAILY_ALERT_THRESHOLD = 'not-a-number';
-    expect(getGaslessDailyAlertThreshold()).toBe(30);
-  });
-
   it('counts against a per-UTC-day key', async () => {
     (incrementGaslessCounter as Mock).mockResolvedValue(1);
 
@@ -68,7 +54,7 @@ describe('countRelayedVote', () => {
     );
   });
 
-  it('alerts once when volume reaches the alert threshold', async () => {
+  it('alerts once when volume reaches 30 votes', async () => {
     (incrementGaslessCounter as Mock).mockResolvedValueOnce(30).mockResolvedValueOnce(31);
 
     await countRelayedVote(network);
