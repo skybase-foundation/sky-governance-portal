@@ -76,7 +76,9 @@ The following configuration values can be added to the `.env` file:
 
 - Set `USE_CACHE` to true if you want to use cache. With `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` set (from the Upstash console's REST API tab) it uses Upstash over HTTP, otherwise the filesystem cache. `REDIS_URL` is no longer used. The cache is always skipped during `next build`.
 
-- Set `GASLESS_DISABLED` to `true` to disable gasless voting in UI (pre-check endpoint will fail)
+- Set `GASLESS_DISABLED` to `true` to turn gasless voting off. The vote endpoint rejects every request with a 503, the Privy webhook stops fee bumps, and the review UI shows gasless voting as unavailable
+
+- Gasless voting's spending controls (the per-voter cooldown, the fee-bump cap and the daily vote count) are stored in Upstash Redis. In production, gasless votes are refused while `UPSTASH_REDIS_REST_URL` and `UPSTASH_REDIS_REST_TOKEN` are unset or Redis is unreachable, whatever `USE_CACHE` says
 
 - Set `NEXT_PUBLIC_VERCEL_ENV` to `development` to use staging data sources (subgraphs and GitHub repos)
 
@@ -90,7 +92,7 @@ The following configuration values can be added to the `.env` file:
 **Required for gasless voting** Set `PRIVY_WALLET_ID_MAINNET` and/or `PRIVY_WALLET_ID_TESTNET` to the Privy wallet id used to sign gasless poll votes
 **Optional** Set `GASLESS_BACKDOOR_SECRET` to allow for bypassing the gasless voting eligibility checks by anyone with the password
 
-The `Gasless vote synthetic check` workflow (`.github/workflows/gasless-synthetic.yml`) casts one gasless vote against production per day and posts to discord when it fails. It reads the `GASLESS_BACKDOOR_SECRET` and `GASLESS_WEBHOOK_URL` repository secrets, which must match the values deployed in Vercel.
+The `Gasless vote synthetic check` workflow (`.github/workflows/gasless-synthetic.yml`) casts one gasless vote against production per day and posts to discord when it fails. It reads the `GASLESS_BACKDOOR_SECRET` and `GASLESS_WEBHOOK_URL` repository secrets, which must match the values deployed in Vercel. The same workflow also checks the relayer balance and gasless availability through the precheck endpoint and posts to discord when the balance is below 0.01 ETH or gasless voting is unavailable. A Discord alert also fires when 30 gasless votes have been relayed in a UTC day.
 
 - Set `DASHBOARD_PASSWORD` for adding protection to the `/dashboard` route
 

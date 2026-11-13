@@ -9,13 +9,16 @@ SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, it, expect, vi, beforeEach, Mock } from 'vitest';
 import { parseGwei, toFunctionSelector } from 'viem';
 import { handleStillPending, __testables } from '../handleStillPending';
-import { cacheSetNX } from 'modules/cache/cache';
+import { claimGaslessSlot, GaslessStoreUnavailableError } from '../gaslessStore';
 import { privySendTransaction } from 'lib/privyRest';
 import { postRequestToDiscord } from 'modules/app/api/postRequestToDiscord';
 import { config } from 'lib/config';
 import { getGaslessPublicClient } from 'modules/web3/helpers/getPublicClient';
 
-vi.mock('modules/cache/cache');
+vi.mock('../gaslessStore', async importOriginal => ({
+  ...(await importOriginal<typeof import('../gaslessStore')>()),
+  claimGaslessSlot: vi.fn()
+}));
 vi.mock('lib/privyRest');
 vi.mock('modules/app/api/postRequestToDiscord');
 vi.mock('modules/web3/helpers/getPublicClient');
@@ -24,7 +27,8 @@ vi.mock('lib/config', () => ({
   config: {
     PRIVY_WALLET_ID_MAINNET: 'wallet-mainnet',
     PRIVY_WALLET_ID_TESTNET: 'wallet-testnet',
-    GASLESS_WEBHOOK_URL: 'https://discord.example/hook'
+    GASLESS_WEBHOOK_URL: 'https://discord.example/hook',
+    GASLESS_DISABLED: ''
   }
 }));
 
@@ -38,6 +42,7 @@ beforeEach(() => {
     caip2: 'eip155:42161'
   });
   (getGaslessPublicClient as Mock).mockReturnValue({ getTransactionReceipt });
+  config.GASLESS_DISABLED = '';
   // Default: not yet mined
   getTransactionReceipt.mockRejectedValue(new Error('not found'));
 });
@@ -70,14 +75,14 @@ const validPayload = {
 
 describe('handleStillPending', () => {
   it('claims slot 1 on first attempt and bumps fees by 1.4x', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending({
       ...validPayload,
       transaction_request: { ...validPayload.transaction_request, gas_limit: '0x30d40' }
     });
 
-    expect(cacheSetNX).toHaveBeenCalledTimes(1);
+    expect(claimGaslessSlot).toHaveBeenCalledTimes(1);
     expect(privySendTransaction).toHaveBeenCalledTimes(1);
     const [walletId, opts] = (privySendTransaction as Mock).mock.calls[0];
     expect(walletId).toBe('wallet-mainnet');
@@ -95,7 +100,7 @@ describe('handleStillPending', () => {
   });
 
   it('alerts and bails when both attempt slots are taken (cap reached)', async () => {
-    (cacheSetNX as Mock).mockResolvedValue(false);
+    (claimGaslessSlot as Mock).mockResolvedValue(false);
 
     await handleStillPending(validPayload);
 
@@ -111,7 +116,7 @@ describe('handleStillPending', () => {
   });
 
   it('skips bump when the original tx has already mined on-chain', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
     getTransactionReceipt.mockResolvedValueOnce({ status: 'success', blockNumber: 123n });
 
     await handleStillPending(validPayload);
@@ -120,7 +125,7 @@ describe('handleStillPending', () => {
   });
 
   it('aborts when bumped priority fee would exceed the absolute ceiling', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending({
       ...validPayload,
@@ -142,7 +147,7 @@ describe('handleStillPending', () => {
     await expect(
       handleStillPending({ ...validPayload, wallet_id: 'wallet-unknown' })
     ).rejects.toThrow(/Unknown Privy wallet id/);
-    expect(cacheSetNX).not.toHaveBeenCalled();
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
   });
 
@@ -160,7 +165,7 @@ describe('handleStillPending', () => {
   });
 
   it('routes testnet wallet using the testnet CAIP-2', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending({
       ...validPayload,
@@ -181,7 +186,7 @@ describe('handleStillPending', () => {
   // gets stretched 1.4x to cover any base-fee spike. Priority gets the additive floor so the
   // replacement satisfies any EIP-1559 "both fees must bump" replacement rule.
   it('bumps a tx with max_priority_fee_per_gas=0 (the normal Arbitrum case)', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending({
       ...validPayload,
@@ -206,7 +211,7 @@ describe('handleStillPending', () => {
   // When current priority is non-trivial, the multiplicative bump (1.4x) wins over the
   // additive floor (current + 0.01 gwei). E.g., 0.1 gwei * 1.4 = 0.14 > 0.1 + 0.01 = 0.11.
   it('uses multiplicative bump when it exceeds the additive floor', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending(validPayload); // priority = 0.1 gwei
 
@@ -217,7 +222,7 @@ describe('handleStillPending', () => {
   });
 
   it('aborts when max_fee_per_gas is missing from the payload', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     const { max_fee_per_gas: _omit, ...rest } = validPayload.transaction_request;
     await handleStillPending({
@@ -231,7 +236,7 @@ describe('handleStillPending', () => {
   });
 
   it('aborts when max_fee_per_gas is 0', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending({
       ...validPayload,
@@ -259,14 +264,14 @@ describe('handleStillPending', () => {
       }
     });
 
-    expect(cacheSetNX).not.toHaveBeenCalled();
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
     const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
     expect(content).toMatch(/does not match polling contract/i);
   });
 
   it('accepts `to` regardless of address checksum case', async () => {
-    (cacheSetNX as Mock).mockResolvedValueOnce(true);
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
 
     await handleStillPending({
       ...validPayload,
@@ -286,7 +291,7 @@ describe('handleStillPending', () => {
       transaction_request: rest
     });
 
-    expect(cacheSetNX).not.toHaveBeenCalled();
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
     const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
     expect(content).toMatch(/selector does not match/i);
@@ -302,7 +307,7 @@ describe('handleStillPending', () => {
       }
     });
 
-    expect(cacheSetNX).not.toHaveBeenCalled();
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
     const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
     expect(content).toMatch(/selector does not match/i);
@@ -317,7 +322,7 @@ describe('handleStillPending', () => {
       }
     });
 
-    expect(cacheSetNX).not.toHaveBeenCalled();
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
     const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
     expect(content).toMatch(/is nonzero/i);
@@ -333,7 +338,7 @@ describe('handleStillPending', () => {
       }
     });
 
-    expect(cacheSetNX).not.toHaveBeenCalled();
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
     expect(privySendTransaction).not.toHaveBeenCalled();
     const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
     expect(content).toMatch(/chain_id=1 does not match/i);
@@ -344,5 +349,36 @@ describe('__testables.bump', () => {
   it('multiplies by 1.4 using integer arithmetic', () => {
     expect(__testables.bump(100n)).toBe(140n);
     expect(__testables.bump(7n)).toBe(9n); // 7 * 14 / 10 = 98/10 = 9 (truncated)
+  });
+
+  it('does not bump while gasless voting is disabled', async () => {
+    config.GASLESS_DISABLED = 'true';
+
+    await handleStillPending(validPayload);
+
+    expect(claimGaslessSlot).not.toHaveBeenCalled();
+    expect(privySendTransaction).not.toHaveBeenCalled();
+  });
+
+  it('keys attempt slots by relayer wallet, chain and nonce instead of transaction_id', async () => {
+    (claimGaslessSlot as Mock).mockResolvedValueOnce(true);
+
+    await handleStillPending(validPayload);
+    await handleStillPending({ ...validPayload, transaction_id: 'tx-replacement' });
+
+    const keys = (claimGaslessSlot as Mock).mock.calls.map(([, key]) => key);
+    expect(keys[0]).toBe('bump-attempt-wallet-mainnet-42161-7-1');
+    // The replacement shares the lineage, so it continues from the same budget.
+    expect(keys[1]).toBe('bump-attempt-wallet-mainnet-42161-7-1');
+  });
+
+  it('alerts and does not bump when the attempt store is unavailable', async () => {
+    (claimGaslessSlot as Mock).mockRejectedValueOnce(new GaslessStoreUnavailableError('timeout'));
+
+    await handleStillPending(validPayload);
+
+    expect(privySendTransaction).not.toHaveBeenCalled();
+    const content = (postRequestToDiscord as Mock).mock.calls[0][0].content as string;
+    expect(content).toMatch(/Gasless store unavailable/);
   });
 });

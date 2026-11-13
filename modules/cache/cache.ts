@@ -25,7 +25,7 @@ let redisClient: Redis | null | undefined;
  * Static generation never touches it; a build must not depend on a network
  * cache, and the file cache is enough to dedupe fetches within one build.
  */
-const getRedis = (): Redis | null => {
+export const getRedis = (): Redis | null => {
   if (redisClient !== undefined) return redisClient;
   const { UPSTASH_REDIS_REST_URL: url, UPSTASH_REDIS_REST_TOKEN: token, REDIS_URL } = config;
   if (process.env.NEXT_PHASE === PHASE_PRODUCTION_BUILD || !url || !token) {
